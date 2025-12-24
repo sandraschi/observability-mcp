@@ -1,0 +1,57 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: system
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: varlogs
+          __path__: /var/log/*log
+
+  - job_name: observability-mcp
+    static_configs:
+      - targets:
+          - observability-mcp
+        labels:
+          job: observability-mcp
+          __path__: /app/logs/*.log
+    pipeline_stages:
+      - match:
+          selector: '{job="observability-mcp"}'
+          stages:
+            - regex:
+                expression: '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) (?P<level>\w+) (?P<message>.+)$'
+            - labels:
+                level:
+            - output:
+                source: message
+
+  - job_name: mcp-servers
+    static_configs:
+      - targets:
+          - host.docker.internal
+        labels:
+          job: mcp-server-logs
+          __path__: /var/log/mcp/*.log
+    pipeline_stages:
+      - match:
+          selector: '{job="mcp-server-logs"}'
+          stages:
+            - json:
+                expressions:
+                  timestamp: timestamp
+                  level: level
+                  message: message
+                  service: service
+            - labels:
+                service:
+                level:
