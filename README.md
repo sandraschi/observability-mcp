@@ -5,6 +5,7 @@
 [![FastMCP](https://img.shields.io/badge/FastMCP-2.14.1+-blue.svg)](https://github.com/jlowin/fastmcp)
 [![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-Enabled-green.svg)](https://opentelemetry.io)
 [![Prometheus](https://img.shields.io/badge/Prometheus-Ready-orange.svg)](https://prometheus.io)
+[![GitHub](https://img.shields.io/badge/GitHub-sandraschi/observability--mcp-blue)](https://github.com/sandraschi/observability-mcp)
 
 A comprehensive observability server built on FastMCP 2.14.1 that leverages OpenTelemetry integration, persistent storage, and advanced monitoring capabilities to provide production-grade observability for MCP server ecosystems.
 
