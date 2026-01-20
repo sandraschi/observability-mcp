@@ -417,3 +417,8 @@ class TestIntegration:
 
             # Verify workflow completion
             assert metrics_result['metrics']['cpu_percent'] == 65.0
+
+
+
+
+

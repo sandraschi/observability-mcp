@@ -1,0 +1,48 @@
+{
+  "$schema": "https://glama.ai/mcp/schemas/server.json",
+  "maintainers": ["sandraschi"],
+  "name": "observability-mcp",
+  "description": "OpenTelemetry-based observability stack with Prometheus, Grafana, Loki monitoring. Comprehensive metrics, logging, and tracing for MCP servers.",
+  "type": "mcp_server",
+  "status": "beta",
+  "framework": "FastMCP 2.13+",
+  "tools": 8,
+  "transport": ["stdio"],
+  "keywords": [
+    "observability",
+    "opentelemetry",
+    "prometheus",
+    "grafana",
+    "loki",
+    "monitoring",
+    "metrics",
+    "tracing",
+    "logging",
+    "fastmcp"
+  ],
+  "features": {
+    "monitoring_stack": {
+      "enabled": true,
+      "components": ["prometheus", "grafana", "loki", "promtail"],
+      "deployment": "docker-compose"
+    },
+    "metrics_collection": {
+      "enabled": true,
+      "capabilities": ["performance-metrics", "health-checks", "custom-metrics"]
+    },
+    "logging": {
+      "enabled": true,
+      "features": ["structured-logging", "log-aggregation", "search"]
+    },
+    "tracing": {
+      "enabled": true,
+      "standards": ["opentelemetry"],
+      "capabilities": ["distributed-tracing", "span-analysis"]
+    },
+    "dashboards": {
+      "enabled": true,
+      "platform": "grafana",
+      "features": ["mcp-specific-dashboards", "custom-visualizations"]
+    }
+  }
+}

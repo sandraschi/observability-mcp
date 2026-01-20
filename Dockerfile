@@ -48,3 +48,8 @@ LABEL org.opencontainers.image.title="Observability MCP Server" \
       org.opencontainers.image.authors="Sandra Schipal" \
       org.opencontainers.image.source="https://github.com/sandraschi/observability-mcp" \
       org.opencontainers.image.licenses="MIT"
+
+
+
+
+

@@ -27,7 +27,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "fastmcp>=2.14.1,<2.15.0",
+    "fastmcp>=2.14.3,<3.0.0",
     "opentelemetry-distro>=0.50b0",
     "opentelemetry-instrumentation>=0.50b0",
     "opentelemetry-exporter-prometheus>=0.50b0",
@@ -90,3 +90,4 @@ addopts = [
     "--cov-report=term-missing",
     "--cov-report=html:htmlcov",
 ]
+

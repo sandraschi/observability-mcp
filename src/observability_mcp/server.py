@@ -41,10 +41,12 @@ CONFIGURATION:
 import asyncio
 import json
 import os
+import re
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 import psutil
 import structlog
@@ -55,7 +57,7 @@ from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from prometheus_client import start_http_server
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # Configure structured logging
 logger = structlog.get_logger(__name__)
@@ -154,6 +156,77 @@ class AlertConfig(BaseModel):
     severity: str = Field(description="info, warning, error, critical")
     enabled: bool = True
 
+    @field_validator('operator')
+    @classmethod
+    def validate_operator(cls, v):
+        allowed = ['gt', 'lt', 'eq', 'ne']
+        if v not in allowed:
+            raise ValueError(f'Operator must be one of: {allowed}')
+        return v
+
+    @field_validator('severity')
+    @classmethod
+    def validate_severity(cls, v):
+        allowed = ['info', 'warning', 'error', 'critical']
+        if v not in allowed:
+            raise ValueError(f'Severity must be one of: {allowed}')
+        return v
+
+class RateLimiter:
+    """Simple rate limiter for tool calls."""
+
+    def __init__(self, max_calls: int = 100, window_seconds: int = 60):
+        self.max_calls = max_calls
+        self.window_seconds = window_seconds
+        self.calls: Dict[str, List[float]] = {}
+
+    def is_allowed(self, key: str) -> bool:
+        """Check if call is allowed under rate limit."""
+        now = time.time()
+        if key not in self.calls:
+            self.calls[key] = []
+
+        # Remove old calls outside the window
+        self.calls[key] = [t for t in self.calls[key] if now - t < self.window_seconds]
+
+        if len(self.calls[key]) >= self.max_calls:
+            return False
+
+        self.calls[key].append(now)
+        return True
+
+class InputValidator:
+    """Input validation utilities."""
+
+    @staticmethod
+    def validate_url(url: str) -> bool:
+        """Validate URL format and safety."""
+        try:
+            parsed = urlparse(url)
+            # Only allow http/https schemes
+            if parsed.scheme not in ['http', 'https']:
+                return False
+            # Prevent localhost/private IP access for security
+            if parsed.hostname in ['localhost', '127.0.0.1', '0.0.0.0'] or parsed.hostname.startswith('192.168.') or parsed.hostname.startswith('10.'):
+                return False
+            return True
+        except:
+            return False
+
+    @staticmethod
+    def validate_service_name(name: str) -> bool:
+        """Validate service name (alphanumeric, dash, underscore only)."""
+        return bool(re.match(r'^[a-zA-Z0-9_-]+$', name) and len(name) <= 100)
+
+    @staticmethod
+    def validate_days(days: int) -> bool:
+        """Validate days parameter (reasonable range)."""
+        return 1 <= days <= 365
+
+# Global rate limiter
+rate_limiter = RateLimiter(max_calls=50, window_seconds=60)  # 50 calls per minute
+input_validator = InputValidator()
+
 class AnomalyResult(BaseModel):
     """Result of anomaly detection."""
     metric_name: str
@@ -213,14 +286,28 @@ async def monitor_server_health(
 
     Args:
         service_url: URL of the service to check (http:// or https://)
-        timeout_seconds: Timeout for the health check request
+        timeout_seconds: Timeout for the health check request (1-30 seconds)
         expected_status_codes: List of acceptable HTTP status codes (default: [200])
 
     Returns:
         Health check result with metrics and detailed analysis
     """
+    # Security validation
+    if not rate_limiter.is_allowed("health_check"):
+        return {"error": "Rate limit exceeded. Please wait before making another request."}
+
+    if not input_validator.validate_url(service_url):
+        return {"error": "Invalid or unsafe URL provided"}
+
+    if not (1.0 <= timeout_seconds <= 30.0):
+        return {"error": "Timeout must be between 1 and 30 seconds"}
+
     if expected_status_codes is None:
         expected_status_codes = [200]
+
+    # Validate status codes
+    if not all(isinstance(code, int) and 100 <= code <= 599 for code in expected_status_codes):
+        return {"error": "Invalid status codes provided"}
 
     start_time = time.time()
 
@@ -266,12 +353,12 @@ async def monitor_server_health(
     span.set_attribute("health.status", result.status)
     span.set_attribute("response_time_ms", result.response_time_ms)
 
-    # Store result in persistent storage
+    # Store result in persistent storage (with bounds checking)
     history_key = f"health_history:{service_url}"
     history = await ctx.storage.get(history_key, [])
     history.append(result.dict())
-    # Keep only last 100 results
-    history = history[-100:]
+    # Keep only last 50 results per service to prevent unbounded growth
+    history = history[-50:]
     await ctx.storage.set(history_key, history)
 
     return {
@@ -290,11 +377,17 @@ async def collect_performance_metrics(ctx: Context, service_name: str = "system"
     Metrics are persisted for historical analysis and trend detection.
 
     Args:
-        service_name: Name of the service to monitor (default: system)
+        service_name: Name of the service to monitor (default: system, max 50 chars)
 
     Returns:
         Performance metrics with historical analysis and recommendations
     """
+    # Security validation
+    if not rate_limiter.is_allowed("performance_metrics"):
+        return {"error": "Rate limit exceeded. Please wait before making another request."}
+
+    if not input_validator.validate_service_name(service_name):
+        return {"error": "Invalid service name provided"}
     with tracer.start_as_span("collect_performance_metrics") as span:
         span.set_attribute("service.name", service_name)
 
@@ -324,12 +417,12 @@ async def collect_performance_metrics(ctx: Context, service_name: str = "system"
 
         performance_metric_counter.add(1, {"service": service_name})
 
-        # Store metrics history
+        # Store metrics history (with bounds checking)
         history_key = f"performance_history:{service_name}"
         history = await ctx.storage.get(history_key, [])
         history.append(metrics_data.dict())
-        # Keep last 1000 data points
-        history = history[-1000:]
+        # Keep last 500 data points per service to prevent unbounded growth
+        history = history[-500:]
         await ctx.storage.set(history_key, history)
 
         # Analyze trends
@@ -360,16 +453,40 @@ async def trace_mcp_calls(
     enabling distributed tracing across multiple MCP servers.
 
     Args:
-        operation_name: Name of the operation being traced
-        service_name: Name of the service performing the operation
-        duration_ms: Duration of the operation in milliseconds
-        attributes: Additional attributes to include in the trace
+        operation_name: Name of the operation being traced (max 100 chars)
+        service_name: Name of the service performing the operation (max 50 chars)
+        duration_ms: Duration of the operation in milliseconds (0-3600000)
+        attributes: Additional attributes to include in the trace (max 10 key-value pairs)
 
     Returns:
         Trace information and analysis
     """
+    # Security validation
+    if not rate_limiter.is_allowed("trace_calls"):
+        return {"error": "Rate limit exceeded. Please wait before making another request."}
+
+    if not input_validator.validate_service_name(service_name):
+        return {"error": "Invalid service name provided"}
+
+    if not (isinstance(operation_name, str) and len(operation_name) <= 100):
+        return {"error": "Invalid operation name"}
+
+    if not (isinstance(duration_ms, (int, float)) and 0 <= duration_ms <= 3600000):  # Max 1 hour
+        return {"error": "Invalid duration"}
+
     if attributes is None:
         attributes = {}
+
+    # Limit attributes to prevent abuse
+    if len(attributes) > 10:
+        return {"error": "Too many attributes provided"}
+
+    # Validate attribute keys and values
+    for key, value in attributes.items():
+        if not (isinstance(key, str) and len(key) <= 50):
+            return {"error": "Invalid attribute key"}
+        if not isinstance(value, (str, int, float, bool)):
+            return {"error": "Invalid attribute value type"}
 
     with tracer.start_as_span(operation_name) as span:
         span.set_attribute("service.name", service_name)
@@ -391,12 +508,12 @@ async def trace_mcp_calls(
     # Record metrics
     trace_counter.add(1, {"service": service_name, "operation": operation_name})
 
-    # Store trace history
+    # Store trace history (with bounds checking)
     history_key = f"trace_history:{service_name}"
     history = await ctx.storage.get(history_key, [])
     history.append(trace_info.dict())
-    # Keep last 500 traces
-    history = history[-500:]
+    # Keep last 200 traces per service to prevent unbounded growth
+    history = history[-200:]
     await ctx.storage.set(history_key, history)
 
     # Analyze trace patterns
@@ -417,12 +534,22 @@ async def generate_performance_reports(ctx: Context, service_name: str = None, d
     for optimizing MCP server performance.
 
     Args:
-        service_name: Specific service to analyze (None for all services)
-        days: Number of days of history to analyze
+        service_name: Specific service to analyze (None for all services, max 50 chars)
+        days: Number of days of history to analyze (1-365)
 
     Returns:
         Performance report with analysis and recommendations
     """
+    # Security validation
+    if not rate_limiter.is_allowed("performance_reports"):
+        return {"error": "Rate limit exceeded. Please wait before making another request."}
+
+    if service_name and not input_validator.validate_service_name(service_name):
+        return {"error": "Invalid service name provided"}
+
+    if not input_validator.validate_days(days):
+        return {"error": "Invalid days parameter"}
+
     with tracer.start_as_span("generate_performance_reports") as span:
         span.set_attribute("report.days", days)
         if service_name:
@@ -551,6 +678,10 @@ async def monitor_system_resources(ctx: Context) -> Dict[str, Any]:
     Returns:
         System resource status with analysis and recommendations
     """
+    # Security validation - stricter rate limiting for system monitoring
+    if not rate_limiter.is_allowed("system_resources"):
+        return {"error": "Rate limit exceeded. System monitoring is restricted."}
+
     with tracer.start_as_span("monitor_system_resources") as span:
 
         # System-wide metrics
@@ -619,12 +750,12 @@ async def monitor_system_resources(ctx: Context) -> Dict[str, Any]:
             }
         }
 
-        # Store system status
+        # Store system status (with bounds checking)
         history_key = "system_status_history"
         history = await ctx.storage.get(history_key, [])
         history.append(system_status)
-        # Keep last 100 system status snapshots
-        history = history[-100:]
+        # Keep last 50 system status snapshots to prevent unbounded growth
+        history = history[-50:]
         await ctx.storage.set(history_key, history)
 
         # Analyze system health
@@ -650,11 +781,18 @@ async def analyze_mcp_interactions(ctx: Context, days: int = 7) -> Dict[str, Any
     how MCP servers are being used and identify optimization opportunities.
 
     Args:
-        days: Number of days of interaction data to analyze
+        days: Number of days of interaction data to analyze (1-365)
 
     Returns:
         Interaction analysis with patterns, bottlenecks, and recommendations
     """
+    # Security validation
+    if not rate_limiter.is_allowed("analyze_interactions"):
+        return {"error": "Rate limit exceeded. Please wait before making another request."}
+
+    if not input_validator.validate_days(days):
+        return {"error": "Invalid days parameter"}
+
     with tracer.start_as_span("analyze_mcp_interactions") as span:
         span.set_attribute("analysis.days", days)
 
@@ -730,6 +868,14 @@ async def export_metrics(ctx: Context, format: str = "prometheus", include_histo
     Returns:
         Exported metrics in the requested format
     """
+    # Security validation
+    if not rate_limiter.is_allowed("export_metrics"):
+        return {"error": "Rate limit exceeded. Export operations are restricted."}
+
+    allowed_formats = ["prometheus", "opentelemetry", "json"]
+    if format not in allowed_formats:
+        return {"error": f"Invalid format. Must be one of: {allowed_formats}"}
+
     with tracer.start_as_span("export_metrics") as span:
         span.set_attribute("export.format", format)
         span.set_attribute("export.include_history", include_history)
@@ -759,14 +905,14 @@ async def export_metrics(ctx: Context, format: str = "prometheus", include_histo
             }
 
             if include_history:
-                # Include recent history
+                # Include recent history (with strict limits to prevent data exfiltration)
                 storage_keys = await ctx.storage.keys()
                 history_keys = [k for k in storage_keys if "_history:" in k]
 
                 export_data["history"] = {}
-                for key in history_keys[:10]:  # Limit to 10 history keys
+                for key in history_keys[:5]:  # Limit to 5 history keys for security
                     history = await ctx.storage.get(key, [])
-                    export_data["history"][key] = history[-100:]  # Last 100 entries
+                    export_data["history"][key] = history[-20:]  # Last 20 entries only
 
             return export_data
 

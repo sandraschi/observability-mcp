@@ -42,3 +42,8 @@ ruler:
 # For more information, please refer to https://grafana.com/docs/loki/latest/configuration/#analytics
 analytics:
   reporting_enabled: false
+
+
+
+
+

@@ -95,3 +95,8 @@ volumes:
 networks:
   observability:
     driver: bridge
+
+
+
+
+

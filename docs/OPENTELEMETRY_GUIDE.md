@@ -537,3 +537,8 @@ with tracer.start_as_span("operation") as span:
 **OpenTelemetry is the future of observability** - vendor-neutral, language-agnostic, and designed for cloud-native applications. Start small, instrument gradually, and scale as needed!
 
 *Last updated: December 2024 | OpenTelemetry v1.28.0*
+
+
+
+
+

@@ -431,3 +431,8 @@ FastAPIInstrumentor.instrument_app(app)
 ---
 
 **OpenTelemetry is the **universal translator** for observability data** - it speaks every backend's language while letting you use the best tools for each job! 🎯
+
+
+
+
+
