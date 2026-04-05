@@ -1,17 +1,19 @@
+import asyncio
+import json
 import os
 import re
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 import psutil
 import structlog
 from fastmcp import Context, FastMCP
 from opentelemetry import metrics, trace
+from opentelemetry.metrics import Counter, Histogram, UpDownCounter
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from prometheus_client import start_http_server
@@ -19,7 +21,6 @@ from pydantic import BaseModel, Field, field_validator
 import aiohttp
 import logging
 from logging.handlers import RotatingFileHandler
-from .transport import run_server
 
 # Configure structured logging with Loki integration
 logger = structlog.get_logger(__name__)
@@ -99,18 +100,9 @@ class LokiClient:
 # Global Loki client
 loki_client = LokiClient(os.getenv("LOKI_URL", "http://localhost:3100"))
 
-# OpenTelemetry Setup
-resource = Resource(attributes={"service.name": "observability-mcp"})
-tracer_provider = TracerProvider(resource=resource)
-trace.set_tracer_provider(tracer_provider)
-
 # Console span exporter for development
 span_processor = BatchSpanProcessor(ConsoleSpanExporter())
 tracer_provider.add_span_processor(span_processor)
-
-# Meter Provider setup
-meter_provider = MeterProvider(resource=resource)
-metrics.set_meter_provider(meter_provider)
 
 # Get meters and tracers
 meter = metrics.get_meter("observability-mcp")
@@ -248,7 +240,7 @@ class InputValidator:
             if parsed.hostname in ['localhost', '127.0.0.1', '0.0.0.0'] or parsed.hostname.startswith('192.168.') or parsed.hostname.startswith('10.'):
                 return False
             return True
-        except Exception:
+        except:
             return False
 
     @staticmethod
@@ -993,10 +985,10 @@ def _correlate_logs_metrics(logs: Dict, metrics: Dict) -> Dict[str, Any]:
         "insights": ["Logs show errors during high CPU periods", "Correlation suggests resource constraints"]
     }
 
-def main():
+async def main():
     """Main entry point for the observability MCP server."""
     logger.info("Starting Observability MCP Server", version="0.1.0")
-    run_server(mcp, server_name="observability-mcp")
+    mcp.run(transport="stdio")
 
 if __name__ == "__main__":
     main()

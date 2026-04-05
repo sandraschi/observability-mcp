@@ -5,36 +5,60 @@
 [![FastMCP](https://img.shields.io/badge/FastMCP-2.14.1+-blue.svg)](https://github.com/jlowin/fastmcp)
 [![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-Enabled-green.svg)](https://opentelemetry.io)
 [![Prometheus](https://img.shields.io/badge/Prometheus-Ready-orange.svg)](https://prometheus.io)
+[![Grafana](https://img.shields.io/badge/Grafana-Dashboards-blue.svg)](https://grafana.com)
+[![Loki](https://img.shields.io/badge/Loki-Logs-green.svg)](https://grafana.com/oss/loki/)
 [![GitHub](https://img.shields.io/badge/GitHub-sandraschi/observability--mcp-blue)](https://github.com/sandraschi/observability-mcp)
 
-A comprehensive observability server built on FastMCP 2.14.1 that leverages OpenTelemetry integration, persistent storage, and advanced monitoring capabilities to provide production-grade observability for MCP server ecosystems.
+A comprehensive observability server built on FastMCP 2.14.1 that leverages OpenTelemetry integration, persistent storage, and advanced monitoring capabilities to provide production-grade observability for MCP server ecosystems. Features state-of-the-art Grafana dashboards for visualization, Loki for centralized log aggregation, and Prometheus for metrics collection.
 
 ---
 
-## 🚀 Features
+##  Features
 
 ### **FastMCP 2.14.1 Integration**
-- ✅ **OpenTelemetry Integration** - Distributed tracing and metrics collection
-- ✅ **Enhanced Storage Backend** - Persistent metrics and historical data
-- ✅ **Production-Ready** - Built for high-performance monitoring
+-  **OpenTelemetry Integration** - Distributed tracing and metrics collection
+-  **Enhanced Storage Backend** - Persistent metrics and historical data
+-  **Production-Ready** - Built for high-performance monitoring
 
 ### **Comprehensive Monitoring**
-- 🔍 **Real-time Health Checks** - Monitor MCP server availability and response times
-- 📊 **Performance Metrics** - CPU, memory, disk, and network monitoring
-- 🔗 **Distributed Tracing** - Track interactions across MCP server ecosystems
-- 🚨 **Intelligent Alerting** - Anomaly detection and automated alerts
-- 📈 **Performance Reports** - Automated analysis and optimization recommendations
+-  **Real-time Health Checks** - Monitor MCP server availability and response times
+-  **Performance Metrics** - CPU, memory, disk, and network monitoring with Prometheus
+-  **Distributed Tracing** - Track interactions across MCP server ecosystems
+-  **Centralized Logging** - Loki-powered log aggregation and querying
+-  **Intelligent Alerting** - Anomaly detection and automated alerts
+-  **Performance Reports** - Automated analysis and optimization recommendations
 
 ### **Advanced Analytics**
-- 🔬 **Usage Pattern Analysis** - Understand how MCP servers are being used
-- 📉 **Trend Detection** - Identify performance trends and bottlenecks
-- 🎯 **Optimization Insights** - Data-driven recommendations for improvement
-- 📤 **Multi-Format Export** - Prometheus, OpenTelemetry, and JSON export
+-  **Usage Pattern Analysis** - Understand how MCP servers are being used
+-  **Trend Detection** - Identify performance trends and bottlenecks
+-  **Log Correlation** - Correlate metrics with Loki logs for root cause analysis
+-  **Optimization Insights** - Data-driven recommendations for improvement
+-  **Multi-Format Export** - Prometheus, Loki, OpenTelemetry, and JSON export
 
 ---
 
-## 🛠️ Installation
+##  Installation
 
+### Prerequisites
+- [uv](https://docs.astral.sh/uv/) installed (RECOMMENDED)
+- Python 3.12+
+
+###  Quick Start
+Run immediately via `uvx`:
+```bash
+uvx observability-mcp
+```
+
+###  Claude Desktop Integration
+Add to your `claude_desktop_config.json`:
+```json
+"mcpServers": {
+  "observability-mcp": {
+    "command": "uv",
+    "args": ["--directory", "D:/Dev/repos/observability-mcp", "run", "observability-mcp"]
+  }
+}
+```
 ### Prerequisites
 - Python 3.11+
 - FastMCP 2.14.1+ (automatically installed)
@@ -43,18 +67,32 @@ A comprehensive observability server built on FastMCP 2.14.1 that leverages Open
 ```bash
 git clone https://github.com/sandraschi/observability-mcp
 cd observability-mcp
-pip install -e .
+uv pip install -e .
 ```
 
-### Docker Installation
+##  Installation
+
+### Prerequisites
+- [uv](https://docs.astral.sh/uv/) installed (RECOMMENDED)
+- Python 3.12+
+
+###  Quick Start
+Run immediately via `uvx`:
 ```bash
-docker build -t observability-mcp .
-docker run -p 9090:9090 observability-mcp
+uvx observability-mcp
 ```
 
----
-
-## 🚀 Quick Start
+###  Claude Desktop Integration
+Add to your `claude_desktop_config.json`:
+```json
+"mcpServers": {
+  "observability-mcp": {
+    "command": "uv",
+    "args": ["--directory", "D:/Dev/repos/observability-mcp", "run", "observability-mcp"]
+  }
+}
+```
+##  Quick Start
 
 ### 1. Start the Server
 ```bash
@@ -65,15 +103,28 @@ observability-mcp run
 python -m observability_mcp.server
 ```
 
-### 2. Verify Installation
-```bash
-# Check server health
-observability-mcp health
+##  Installation
 
-# View available metrics
-observability-mcp metrics
+### Prerequisites
+- [uv](https://docs.astral.sh/uv/) installed (RECOMMENDED)
+- Python 3.12+
+
+###  Quick Start
+Run immediately via `uvx`:
+```bash
+uvx observability-mcp
 ```
 
+###  Claude Desktop Integration
+Add to your `claude_desktop_config.json`:
+```json
+"mcpServers": {
+  "observability-mcp": {
+    "command": "uv",
+    "args": ["--directory", "D:/Dev/repos/observability-mcp", "run", "observability-mcp"]
+  }
+}
+```
 ### 3. Configure Claude Desktop
 Add to your `claude_desktop_config.json`:
 ```json
@@ -89,32 +140,42 @@ Add to your `claude_desktop_config.json`:
 
 ---
 
-## 📊 Available Tools
+##  Available Tools
 
-### 🔍 Health Monitoring
+###  Health Monitoring
 - **`monitor_server_health`** - Real-time health checks with OpenTelemetry metrics
 - **`monitor_system_resources`** - Comprehensive system resource monitoring
 
-### 📈 Performance Analysis
+###  Performance Analysis
 - **`collect_performance_metrics`** - CPU, memory, disk, and network metrics
 - **`generate_performance_reports`** - Automated performance analysis and recommendations
 - **`analyze_mcp_interactions`** - Usage pattern analysis and optimization insights
 
-### 🚨 Alerting & Anomaly Detection
+###  Log Management & Loki Integration
+- **`send_logs_to_loki`** - Send custom log entries to Loki for centralized aggregation
+- **`query_loki_logs`** - Query logs from Loki with advanced LogQL filtering
+- **`analyze_log_patterns`** - Analyze log patterns, anomalies, and trends
+- **`correlate_logs_and_metrics`** - Correlate Loki logs with Prometheus metrics
+
+###  Alerting & Anomaly Detection
 - **`alert_on_anomalies`** - Intelligent anomaly detection and alerting
 - **`trace_mcp_calls`** - Distributed tracing for MCP server interactions
 
-### 📤 Data Export
+###  Data Export
 - **`export_metrics`** - Export metrics in Prometheus, OpenTelemetry, or JSON formats
 
 ---
 
-## 🔧 Configuration
+##  Configuration
 
 ### Environment Variables
 ```bash
 # Prometheus metrics server port
 PROMETHEUS_PORT=9090
+
+# Loki configuration
+LOKI_URL=http://localhost:3100
+LOG_FILE=/tmp/observability-mcp.log
 
 # OpenTelemetry service name
 OTEL_SERVICE_NAME=observability-mcp
@@ -137,7 +198,7 @@ Alerts are stored persistently and can be customized through the MCP tools.
 
 ---
 
-## 📈 Monitoring Dashboard
+##  Monitoring Dashboard
 
 ### Prometheus Metrics
 Access metrics at: `http://localhost:9090/metrics`
@@ -159,14 +220,30 @@ mcp_traces_created{service="...", operation="..."} 1
 mcp_alerts_triggered{type="active|anomaly"} 1
 ```
 
-### Integration with Grafana
-1. Add Prometheus as a data source in Grafana
-2. Import the provided dashboard JSON
-3. Visualize your MCP ecosystem's health and performance
+### Integration with Grafana & Loki
+**Grafana Dashboards are State-of-the-Art for Observability**
+
+1. **Add Data Sources in Grafana:**
+   - Add Prometheus as a data source (http://localhost:9090)
+   - Add Loki as a data source (http://localhost:3100)
+
+2. **Import Dashboards:**
+   - Import the provided `mcp-observability.json` dashboard
+   - Customize panels for your specific MCP ecosystem
+
+3. **Log Integration:**
+   - Query logs with Loki: `{job="observability-mcp"} |= "ERROR"`
+   - Correlate metrics with logs for comprehensive troubleshooting
+
+**Why Grafana + Loki = SOTA Observability:**
+- **Unified View**: Single pane of glass for metrics, logs, and traces
+- **Powerful Queries**: PromQL + LogQL for complex analysis
+- **Rich Visualizations**: State-of-the-art dashboards with real-time updates
+- **Alert Integration**: Native alerting with multiple notification channels
 
 ---
 
-## 🏗️ Architecture
+##  Architecture
 
 ### FastMCP 2.14.1 Features Leveraged
 
@@ -182,21 +259,26 @@ mcp_alerts_triggered{type="active|anomaly"} 1
 
 #### **Production Architecture**
 ```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   MCP Servers   │───▶│ Observability    │───▶│  Prometheus     │
-│   (Monitored)   │    │   MCP Server     │    │   Metrics       │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-                                │                        │
-                                ▼                        ▼
-                       ┌──────────────────┐    ┌─────────────────┐
-                       │  Persistent      │    │   Grafana       │
-                       │   Storage        │    │   Dashboard     │
-                       └──────────────────┘    └─────────────────┘
+        
+   MCP Servers    Observability      Prometheus     
+   (Monitored)          MCP Server            Metrics       
+        
+                                                       
+                                                       
+                          
+                        Persistent             Grafana       
+                         Storage               Dashboards    
+                             (State-of-Art)
+                                               
+                 
+   Application         Loki        
+     Logs               Log Aggregation
+    
 ```
 
 ---
 
-## 📚 Usage Examples
+##  Usage Examples
 
 ### Health Monitoring
 ```python
@@ -238,9 +320,40 @@ print("Performance Summary:", report['summary'])
 print("Recommendations:", report['recommendations'])
 ```
 
+### Loki Log Management
+```python
+# Send custom logs to Loki
+result = await send_logs_to_loki(
+    log_message="User authentication failed",
+    level="warning",
+    labels={"service": "auth-service", "user_id": "12345"}
+)
+
+# Query logs from Loki
+logs = await query_loki_logs(
+    query='{job="observability-mcp"} |= "ERROR"',
+    start_time="1h",
+    limit=100
+)
+
+# Analyze log patterns
+patterns = await analyze_log_patterns(
+    query='{service="web-mcp"}',
+    time_window="24h",
+    min_occurrences=10
+)
+
+# Correlate logs with metrics
+correlation = await correlate_logs_and_metrics(
+    log_query='{service="api"} |= "timeout"',
+    metric_query="rate(http_requests_total{status='500'}[5m])",
+    time_window="1h"
+)
+```
+
 ---
 
-## 🔧 Development
+##  Development
 
 ### Running Tests
 ```bash
@@ -277,7 +390,7 @@ docker run -p 9090:9090 -v $(pwd):/app observability-mcp:dev
 
 ---
 
-## 📊 Performance Benchmarks
+##  Performance Benchmarks
 
 ### FastMCP 2.14.1 Benefits
 - **OpenTelemetry Overhead**: <1ms per trace
@@ -292,7 +405,7 @@ docker run -p 9090:9090 -v $(pwd):/app observability-mcp:dev
 
 ---
 
-## 🚨 Troubleshooting
+##  Troubleshooting
 
 ### Common Issues
 
@@ -329,7 +442,7 @@ observability-mcp metrics
 
 ---
 
-## 🤝 Contributing
+##  Contributing
 
 ### Development Setup
 1. Fork the repository
@@ -340,7 +453,7 @@ observability-mcp metrics
 
 ### Code Standards
 - **FastMCP 2.14.1+**: Use latest features and patterns
-- **OpenTelemetry**: Follow OTEL best practices
+- **OpenTelemetry**: Follow OTEL  practices
 - **Async First**: All operations should be async
 - **Type Hints**: Full type coverage required
 - **Documentation**: Comprehensive docstrings
@@ -353,27 +466,31 @@ observability-mcp metrics
 
 ---
 
-## 📄 License
+##  License
 
 MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-## 🙏 Acknowledgments
+##  Acknowledgments
 
-- **FastMCP Team** - For the amazing 2.14.1 framework with OpenTelemetry integration
+- **FastMCP Team** - For the  2.14.1 framework with OpenTelemetry integration
 - **OpenTelemetry Community** - For the observability standards and tools
 - **Prometheus Team** - For the metrics collection and alerting system
+- **Grafana Labs** - For Loki log aggregation and Grafana's state-of-the-art dashboarding
+- **Grafana Community** - For the visualization platform that powers modern observability
 
 ---
 
-## 🔗 Related Projects
+##  Related Projects
 
 - [**FastMCP**](https://github.com/jlowin/fastmcp) - The framework this server is built on
 - [**OpenTelemetry Python**](https://opentelemetry.io/docs/python/) - Observability instrumentation
 - [**Prometheus**](https://prometheus.io) - Metrics collection and alerting
-- [**Grafana**](https://grafana.com) - Visualization and dashboards
+- [**Grafana**](https://grafana.com) - State-of-the-art dashboards and visualization
+- [**Loki**](https://grafana.com/oss/loki/) - Log aggregation and querying
+- [**Promtail**](https://grafana.com/docs/loki/latest/clients/promtail/) - Log shipping agent
 
 ---
 
-**Built with ❤️ using FastMCP 2.14.1 and OpenTelemetry**
+**Built with  using FastMCP 2.14.1, OpenTelemetry, Prometheus, Grafana & Loki - State-of-the-Art Observability**
