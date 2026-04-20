@@ -1,6 +1,8 @@
 # Observability MCP Server
 
-**FastMCP 2.14.1-powered observability server for monitoring MCP ecosystems**
+[![FastMCP Version](https://img.shields.io/badge/FastMCP-3.1.0-blue?style=flat-square&logo=python&logoColor=white)](https://github.com/sandraschi/fastmcp) [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff) [![Linted with Biome](https://img.shields.io/badge/Linted_with-Biome-60a5fa?style=flat-square&logo=biome&logoColor=white)](https://biomejs.dev/) [![Built with Just](https://img.shields.io/badge/Built_with-Just-000000?style=flat-square&logo=gnu-bash&logoColor=white)](https://github.com/casey/just)
+
+**FastMCP 3.1.0-powered observability server for monitoring MCP ecosystems**
 
 [![FastMCP](https://img.shields.io/badge/FastMCP-2.14.1+-blue.svg)](https://github.com/jlowin/fastmcp)
 [![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-Enabled-green.svg)](https://opentelemetry.io)
@@ -9,13 +11,13 @@
 [![Loki](https://img.shields.io/badge/Loki-Logs-green.svg)](https://grafana.com/oss/loki/)
 [![GitHub](https://img.shields.io/badge/GitHub-sandraschi/observability--mcp-blue)](https://github.com/sandraschi/observability-mcp)
 
-A comprehensive observability server built on FastMCP 2.14.1 that leverages OpenTelemetry integration, persistent storage, and advanced monitoring capabilities to provide production-grade observability for MCP server ecosystems. Features state-of-the-art Grafana dashboards for visualization, Loki for centralized log aggregation, and Prometheus for metrics collection.
+A comprehensive observability server built on FastMCP 3.1.0 that leverages OpenTelemetry integration, persistent storage, and advanced monitoring capabilities to provide production-grade observability for MCP server ecosystems. Features state-of-the-art Grafana dashboards for visualization, Loki for centralized log aggregation, and Prometheus for metrics collection.
 
 ---
 
 ##  Features
 
-### **FastMCP 2.14.1 Integration**
+### **FastMCP 3.1.0 Integration**
 -  **OpenTelemetry Integration** - Distributed tracing and metrics collection
 -  **Enhanced Storage Backend** - Persistent metrics and historical data
 -  **Production-Ready** - Built for high-performance monitoring
@@ -61,7 +63,7 @@ Add to your `claude_desktop_config.json`:
 ```
 ### Prerequisites
 - Python 3.11+
-- FastMCP 2.14.1+ (automatically installed)
+- FastMCP 3.1.0+ (automatically installed)
 
 ### Install from Source
 ```bash
@@ -245,7 +247,7 @@ mcp_alerts_triggered{type="active|anomaly"} 1
 
 ##  Architecture
 
-### FastMCP 2.14.1 Features Leveraged
+### FastMCP 3.1.0 Features Leveraged
 
 #### **OpenTelemetry Integration**
 - **Distributed Tracing**: Track requests across multiple MCP servers
@@ -392,7 +394,7 @@ docker run -p 9090:9090 -v $(pwd):/app observability-mcp:dev
 
 ##  Performance Benchmarks
 
-### FastMCP 2.14.1 Benefits
+### FastMCP 3.1.0 Benefits
 - **OpenTelemetry Overhead**: <1ms per trace
 - **Storage Performance**: 1000+ metrics/second
 - **Memory Usage**: 50MB baseline + 10MB per monitored service
@@ -452,7 +454,7 @@ observability-mcp metrics
 5. Submit a pull request
 
 ### Code Standards
-- **FastMCP 2.14.1+**: Use latest features and patterns
+- **FastMCP 3.1.0+**: Use latest features and patterns
 - **OpenTelemetry**: Follow OTEL  practices
 - **Async First**: All operations should be async
 - **Type Hints**: Full type coverage required
@@ -465,6 +467,17 @@ observability-mcp metrics
 - **Chaos Tests**: Failure scenario testing
 
 ---
+
+
+## 🛡️ Industrial Quality Stack
+
+This project adheres to **SOTA 14.1** industrial standards for high-fidelity agentic orchestration:
+
+- **Python (Core)**: [Ruff](https://astral.sh/ruff) for linting and formatting. Zero-tolerance for `print` statements in core handlers (`T201`).
+- **Webapp (UI)**: [Biome](https://biomejs.dev/) for sub-millisecond linting. Strict `noConsoleLog` enforcement.
+- **Protocol Compliance**: Hardened `stdout/stderr` isolation to ensure crash-resistant JSON-RPC communication.
+- **Automation**: [Justfile](./justfile) recipes for all fleet operations (`just lint`, `just fix`, `just dev`).
+- **Security**: Automated audits via `bandit` and `safety`.
 
 ##  License
 
@@ -493,4 +506,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Built with  using FastMCP 2.14.1, OpenTelemetry, Prometheus, Grafana & Loki - State-of-the-Art Observability**
+**Built with  using FastMCP 3.1.0, OpenTelemetry, Prometheus, Grafana & Loki - State-of-the-Art Observability**
