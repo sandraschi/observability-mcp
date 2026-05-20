@@ -1,0 +1,1008 @@
+import os
+import re
+import time
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
+
+import psutil
+import structlog
+from fastmcp import Context, FastMCP
+from opentelemetry import metrics, trace
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+from prometheus_client import start_http_server
+from pydantic import BaseModel, Field, field_validator
+import aiohttp
+import logging
+from logging.handlers import RotatingFileHandler
+from .transport import run_server
+
+# Configure structured logging with Loki integration
+logger = structlog.get_logger(__name__)
+
+# Set up file logging for Loki collection
+log_file = os.getenv("LOG_FILE", "/tmp/observability-mcp.log")
+file_handler = RotatingFileHandler(log_file, maxBytes=10*1024*1024, backupCount=5)
+file_handler.setFormatter(logging.Formatter(
+    '{"timestamp": "%(asctime)s", "level": "%(levelname)s", "service": "observability-mcp", "message": "%(message)s", "extra": %(extra)s}'
+))
+logging.getLogger().addHandler(file_handler)
+logging.getLogger().setLevel(logging.INFO)
+
+# Loki client for log aggregation
+class LokiClient:
+    """Client for sending logs to Loki."""
+
+    def __init__(self, loki_url: str = "http://localhost:3100"):
+        self.loki_url = loki_url.rstrip('/')
+        self.session: Optional[aiohttp.ClientSession] = None
+
+    async def __aenter__(self):
+        self.session = aiohttp.ClientSession()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self.session:
+            await self.session.close()
+
+    async def send_log(self, labels: Dict[str, str], log_line: str, timestamp_ns: Optional[int] = None):
+        """Send a log entry to Loki."""
+        if not self.session:
+            return
+
+        if timestamp_ns is None:
+            timestamp_ns = int(time.time() * 1e9)
+
+        payload = {
+            "streams": [{
+                "stream": labels,
+                "values": [[str(timestamp_ns), log_line]]
+            }]
+        }
+
+        try:
+            async with self.session.post(f"{self.loki_url}/loki/api/v1/push", json=payload) as response:
+                if response.status != 204:
+                    logger.warning("Failed to send log to Loki", status=response.status)
+        except Exception as e:
+            logger.error("Error sending log to Loki", error=str(e))
+
+    async def query_logs(self, query: str, start: Optional[str] = None, end: Optional[str] = None, limit: int = 100) -> Dict[str, Any]:
+        """Query logs from Loki."""
+        if not self.session:
+            return {"error": "No session available"}
+
+        params = {
+            "query": query,
+            "limit": str(limit)
+        }
+
+        if start:
+            params["start"] = start
+        if end:
+            params["end"] = end
+
+        try:
+            async with self.session.get(f"{self.loki_url}/loki/api/v1/query_range", params=params) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    return {"error": f"Query failed with status {response.status}"}
+        except Exception as e:
+            logger.error("Error querying Loki", error=str(e))
+            return {"error": str(e)}
+
+# Global Loki client
+loki_client = LokiClient(os.getenv("LOKI_URL", "http://localhost:3100"))
+
+# OpenTelemetry Setup
+resource = Resource(attributes={"service.name": "observability-mcp"})
+tracer_provider = TracerProvider(resource=resource)
+trace.set_tracer_provider(tracer_provider)
+
+# Console span exporter for development
+span_processor = BatchSpanProcessor(ConsoleSpanExporter())
+tracer_provider.add_span_processor(span_processor)
+
+# Meter Provider setup
+meter_provider = MeterProvider(resource=resource)
+metrics.set_meter_provider(meter_provider)
+
+# Get meters and tracers
+meter = metrics.get_meter("observability-mcp")
+tracer = trace.get_tracer("observability-mcp")
+
+# Metrics
+health_check_counter = meter.create_counter(
+    name="mcp_health_checks_total",
+    description="Total number of health checks performed",
+    unit="1"
+)
+
+performance_metric_counter = meter.create_counter(
+    name="mcp_performance_metrics_collected",
+    description="Total number of performance metrics collected",
+    unit="1"
+)
+
+trace_counter = meter.create_counter(
+    name="mcp_traces_created",
+    description="Total number of traces created",
+    unit="1"
+)
+
+alert_counter = meter.create_counter(
+    name="mcp_alerts_triggered",
+    description="Total number of alerts triggered",
+    unit="1"
+)
+
+# Resource metrics
+cpu_usage_gauge = meter.create_up_down_counter(
+    name="mcp_cpu_usage_percent",
+    description="Current CPU usage percentage",
+    unit="%"
+)
+
+memory_usage_gauge = meter.create_up_down_counter(
+    name="mcp_memory_usage_mb",
+    description="Current memory usage in MB",
+    unit="MB"
+)
+
+# Data models
+class HealthCheckResult(BaseModel):
+    """Result of a health check operation."""
+    service_name: str
+    status: str = Field(description="Status: healthy, degraded, unhealthy")
+    response_time_ms: float
+    timestamp: datetime
+    details: Dict[str, Any] = Field(default_factory=dict)
+    error_message: Optional[str] = None
+
+class PerformanceMetrics(BaseModel):
+    """Performance metrics for a service."""
+    service_name: str
+    timestamp: datetime
+    cpu_percent: float
+    memory_mb: float
+    disk_usage_percent: float
+    network_io: Dict[str, float]
+    response_times: List[float] = Field(default_factory=list)
+    throughput: Optional[float] = None
+    error_rate: float = 0.0
+
+class TraceInfo(BaseModel):
+    """Information about a trace."""
+    trace_id: str
+    service_name: str
+    operation: str
+    start_time: datetime
+    duration_ms: float
+    status: str
+    attributes: Dict[str, Any] = Field(default_factory=dict)
+
+class AlertConfig(BaseModel):
+    """Configuration for alerts."""
+    metric_name: str
+    threshold: float
+    operator: str = Field(description="gt, lt, eq, ne")
+    severity: str = Field(description="info, warning, error, critical")
+    enabled: bool = True
+
+    @field_validator('operator')
+    @classmethod
+    def validate_operator(cls, v):
+        allowed = ['gt', 'lt', 'eq', 'ne']
+        if v not in allowed:
+            raise ValueError(f'Operator must be one of: {allowed}')
+        return v
+
+    @field_validator('severity')
+    @classmethod
+    def validate_severity(cls, v):
+        allowed = ['info', 'warning', 'error', 'critical']
+        if v not in allowed:
+            raise ValueError(f'Severity must be one of: {allowed}')
+        return v
+
+class RateLimiter:
+    """Simple rate limiter for tool calls."""
+
+    def __init__(self, max_calls: int = 100, window_seconds: int = 60):
+        self.max_calls = max_calls
+        self.window_seconds = window_seconds
+        self.calls: Dict[str, List[float]] = {}
+
+    def is_allowed(self, key: str) -> bool:
+        """Check if call is allowed under rate limit."""
+        now = time.time()
+        if key not in self.calls:
+            self.calls[key] = []
+
+        # Remove old calls outside the window
+        self.calls[key] = [t for t in self.calls[key] if now - t < self.window_seconds]
+
+        if len(self.calls[key]) >= self.max_calls:
+            return False
+
+        self.calls[key].append(now)
+        return True
+
+class InputValidator:
+    """Input validation utilities."""
+
+    @staticmethod
+    def validate_url(url: str) -> bool:
+        """Validate URL format and safety."""
+        try:
+            parsed = urlparse(url)
+            # Only allow http/https schemes
+            if parsed.scheme not in ['http', 'https']:
+                return False
+            # Prevent localhost/private IP access for security
+            if parsed.hostname in ['localhost', '127.0.0.1', '0.0.0.0'] or parsed.hostname.startswith('192.168.') or parsed.hostname.startswith('10.'):
+                return False
+            return True
+        except Exception:
+            return False
+
+    @staticmethod
+    def validate_service_name(name: str) -> bool:
+        """Validate service name (alphanumeric, dash, underscore only)."""
+        return bool(re.match(r'^[a-zA-Z0-9_-]+$', name) and len(name) <= 100)
+
+    @staticmethod
+    def validate_days(days: int) -> bool:
+        """Validate days parameter (reasonable range)."""
+        return 1 <= days <= 365
+
+# Global rate limiter
+rate_limiter = RateLimiter(max_calls=50, window_seconds=60)  # 50 calls per minute
+input_validator = InputValidator()
+
+class AnomalyResult(BaseModel):
+    """Result of anomaly detection."""
+    metric_name: str
+    detected_at: datetime
+    severity: str
+    description: str
+    current_value: float
+    threshold_value: float
+    historical_average: float
+
+@asynccontextmanager
+async def server_lifespan(mcp_instance: FastMCP):
+    """Server lifespan for startup and cleanup."""
+    logger.info("Starting Observability MCP Server")
+
+    # Initialize Prometheus metrics server
+    prometheus_port = int(os.getenv("PROMETHEUS_PORT", "9090"))
+    start_http_server(prometheus_port)
+    logger.info("Prometheus metrics server started", port=prometheus_port)
+
+    # Initialize in-process state
+    _server_state["server_start_time"] = time.time()
+    _server_state["metrics_retention_days"] = int(os.getenv("METRICS_RETENTION_DAYS", "30"))
+
+    # Initialize alert configurations
+    default_alerts = [
+        AlertConfig(metric_name="cpu_percent", threshold=90.0, operator="gt", severity="warning"),
+        AlertConfig(metric_name="memory_mb", threshold=1000.0, operator="gt", severity="error"),
+        AlertConfig(metric_name="error_rate", threshold=0.05, operator="gt", severity="error"),
+    ]
+    _server_state["alert_configs"] = [alert.dict() for alert in default_alerts]
+
+    logger.info("Observability MCP Server startup complete")
+    yield
+
+    logger.info("Shutting down Observability MCP Server")
+    # Cleanup would go here if needed
+
+# Initialize FastMCP server
+mcp = FastMCP(
+    name="Observability-MCP",
+    lifespan=server_lifespan,
+)
+
+# ASGI app for uvicorn deployment (web_sota/start.ps1 runs uvicorn observability_mcp.server:app)
+app = mcp.http_app(path="/mcp")
+
+# In-process storage (replaces non-existent mcp.storage)
+_server_state: Dict[str, Any] = {}
+
+@mcp.tool()
+async def monitor_server_health(
+    ctx: Context,
+    service_url: str,
+    timeout_seconds: float = 5.0,
+    expected_status_codes: List[int] = None
+) -> Dict[str, Any]:
+    """
+    Perform real-time health check on an MCP server or web service.
+
+    This tool uses OpenTelemetry for metrics collection and provides comprehensive
+    health monitoring with detailed response analysis.
+
+    Args:
+        service_url: URL of the service to check (http:// or https://)
+        timeout_seconds: Timeout for the health check request (1-30 seconds)
+        expected_status_codes: List of acceptable HTTP status codes (default: [200])
+
+    Returns:
+        Health check result with metrics and detailed analysis
+    """
+    # Security validation
+    if not rate_limiter.is_allowed("health_check"):
+        return {"error": "Rate limit exceeded. Please wait before making another request."}
+
+    if not input_validator.validate_url(service_url):
+        return {"error": "Invalid or unsafe URL provided"}
+
+    if not (1.0 <= timeout_seconds <= 30.0):
+        return {"error": "Timeout must be between 1 and 30 seconds"}
+
+    if expected_status_codes is None:
+        expected_status_codes = [200]
+
+    # Validate status codes
+    if not all(isinstance(code, int) and 100 <= code <= 599 for code in expected_status_codes):
+        return {"error": "Invalid status codes provided"}
+
+    start_time = time.time()
+
+    with tracer.start_as_span("health_check") as span:
+        span.set_attribute("service.url", service_url)
+        span.set_attribute("timeout_seconds", timeout_seconds)
+
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout_seconds)) as session:
+                async with session.get(service_url) as response:
+                    response_time = (time.time() - start_time) * 1000
+
+                    is_healthy = response.status in expected_status_codes
+                    status = "healthy" if is_healthy else "unhealthy"
+
+                    result = HealthCheckResult(
+                        service_name=service_url,
+                        status=status,
+                        response_time_ms=response_time,
+                        timestamp=datetime.now(),
+                        details={
+                            "status_code": response.status,
+                            "headers": dict(response.headers),
+                            "content_length": len(await response.read()),
+                        }
+                    )
+
+        except Exception as e:
+            response_time = (time.time() - start_time) * 1000
+            result = HealthCheckResult(
+                service_name=service_url,
+                status="unhealthy",
+                response_time_ms=response_time,
+                timestamp=datetime.now(),
+                error_message=str(e)
+            )
+
+    # Record metrics
+    health_check_counter.add(1, {"status": result.status, "service": service_url})
+
+    span.set_attribute("health.status", result.status)
+    span.set_attribute("response_time_ms", result.response_time_ms)
+
+    # Store result in persistent storage (with bounds checking)
+    history_key = f"health_history:{service_url}"
+    history = await ctx.storage.get(history_key, [])
+    history.append(result.dict())
+    # Keep only last 50 results per service to prevent unbounded growth
+    history = history[-50:]
+    await ctx.storage.set(history_key, history)
+
+    return {
+        "health_check": result.dict(),
+        "metrics_recorded": True,
+        "historical_checks": len(history),
+        "recommendations": _generate_health_recommendations(result)
+    }
+
+@mcp.tool()
+async def collect_performance_metrics(ctx: Context, service_name: str = "system") -> Dict[str, Any]:
+    """
+    Collect comprehensive performance metrics for the system or specific service.
+
+    Uses OpenTelemetry for structured metrics collection and psutil for system monitoring.
+    Metrics are persisted for historical analysis and trend detection.
+
+    Args:
+        service_name: Name of the service to monitor (default: system, max 50 chars)
+
+    Returns:
+        Performance metrics with historical analysis and recommendations
+    """
+    # Security validation
+    if not rate_limiter.is_allowed("performance_metrics"):
+        return {"error": "Rate limit exceeded. Please wait before making another request."}
+
+    if not input_validator.validate_service_name(service_name):
+        return {"error": "Invalid service name provided"}
+
+    with tracer.start_as_span("collect_performance_metrics") as span:
+        span.set_attribute("service.name", service_name)
+
+        # Collect system metrics
+        cpu_percent = psutil.cpu_percent(interval=1)
+        memory = psutil.virtual_memory()
+        disk = psutil.disk_usage('/')
+        network = psutil.net_io_counters()
+
+        metrics_data = PerformanceMetrics(
+            service_name=service_name,
+            timestamp=datetime.now(),
+            cpu_percent=cpu_percent,
+            memory_mb=memory.used / (1024 * 1024),
+            disk_usage_percent=disk.percent,
+            network_io={
+                "bytes_sent": network.bytes_sent,
+                "bytes_recv": network.bytes_recv,
+                "packets_sent": network.packets_sent,
+                "packets_recv": network.packets_recv,
+            }
+        )
+
+        # Record OpenTelemetry metrics
+        cpu_usage_gauge.set(int(cpu_percent))
+        memory_usage_gauge.set(int(metrics_data.memory_mb))
+
+        performance_metric_counter.add(1, {"service": service_name})
+
+        # Store metrics history (with bounds checking)
+        history_key = f"performance_history:{service_name}"
+        history = await ctx.storage.get(history_key, [])
+        history.append(metrics_data.dict())
+        # Keep last 500 data points per service to prevent unbounded growth
+        history = history[-500:]
+        await ctx.storage.set(history_key, history)
+
+        # Analyze trends
+        trends = _analyze_performance_trends(history)
+
+        span.set_attribute("cpu_percent", cpu_percent)
+        span.set_attribute("memory_mb", metrics_data.memory_mb)
+
+        return {
+            "metrics": metrics_data.dict(),
+            "trends": trends,
+            "alerts": await _check_performance_alerts(ctx, metrics_data),
+            "recommendations": _generate_performance_recommendations(metrics_data, trends)
+        }
+
+@mcp.tool()
+async def send_logs_to_loki(
+    ctx: Context,
+    log_message: str,
+    level: str = "info",
+    labels: Dict[str, str] = None
+) -> Dict[str, Any]:
+    """
+    Send custom log entries to Loki for centralized log aggregation.
+
+    This tool allows manual log injection into the Loki log aggregation system,
+    enabling correlation between custom events and system metrics.
+
+    Args:
+        log_message: The log message to send
+        level: Log level (debug, info, warning, error, critical)
+        labels: Additional labels to attach to the log entry (max 10 key-value pairs)
+
+    Returns:
+        Confirmation of log submission with metadata
+    """
+    # Security validation
+    if not rate_limiter.is_allowed("send_logs"):
+        return {"error": "Rate limit exceeded. Log operations are restricted."}
+
+    if not log_message or len(log_message) > 1000:
+        return {"error": "Log message must be 1-1000 characters"}
+
+    allowed_levels = ["debug", "info", "warning", "error", "critical"]
+    if level not in allowed_levels:
+        return {"error": f"Invalid log level. Must be one of: {allowed_levels}"}
+
+    if labels is None:
+        labels = {}
+
+    # Limit labels to prevent abuse
+    if len(labels) > 10:
+        return {"error": "Too many labels provided (max 10)"}
+
+    # Validate label keys and values
+    for key, value in labels.items():
+        if not (isinstance(key, str) and len(key) <= 50):
+            return {"error": "Invalid label key"}
+        if not isinstance(value, str) or len(value) > 100:
+            return {"error": "Invalid label value"}
+
+    with tracer.start_as_span("send_logs_to_loki") as span:
+        span.set_attribute("log.level", level)
+        span.set_attribute("log.message_length", len(log_message))
+
+        # Prepare Loki labels
+        loki_labels = {
+            "service": "observability-mcp",
+            "level": level,
+            "source": "manual_entry"
+        }
+        loki_labels.update(labels)
+
+        # Send to Loki
+        async with loki_client:
+            await loki_client.send_log(loki_labels, log_message)
+
+        # Record metrics
+        log_counter = meter.create_counter(f"mcp_logs_sent_{level}")
+        log_counter.add(1, {"level": level})
+
+        # Log locally as well
+        extra = {"labels": labels} if labels else {}
+        getattr(logger, level)(log_message, **extra)
+
+        return {
+            "status": "sent",
+            "message": log_message,
+            "level": level,
+            "labels": loki_labels,
+            "timestamp": datetime.now().isoformat(),
+            "loki_endpoint": loki_client.loki_url
+        }
+
+@mcp.tool()
+async def query_loki_logs(
+    ctx: Context,
+    query: str,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    limit: int = 100
+) -> Dict[str, Any]:
+    """
+    Query logs from Loki with advanced filtering and analysis.
+
+    This tool provides powerful log querying capabilities using Loki's LogQL syntax,
+    enabling correlation between logs, metrics, and traces.
+
+    Args:
+        query: LogQL query string (e.g., '{job="my-service"} |= "ERROR"')
+        start_time: Start time for query (ISO format or relative like "1h", "24h")
+        end_time: End time for query (ISO format or relative)
+        limit: Maximum number of log entries to return (1-1000)
+
+    Returns:
+        Log query results with analysis and insights
+    """
+    # Security validation
+    if not rate_limiter.is_allowed("query_logs"):
+        return {"error": "Rate limit exceeded. Log queries are restricted."}
+
+    if not query or len(query) > 500:
+        return {"error": "Query must be 1-500 characters"}
+
+    if not (1 <= limit <= 1000):
+        return {"error": "Limit must be between 1 and 1000"}
+
+    # Parse time parameters
+    if start_time:
+        if start_time.endswith('h'):
+            hours = int(start_time[:-1])
+            start_time = (datetime.now() - timedelta(hours=hours)).isoformat() + 'Z'
+        elif not start_time.endswith('Z'):
+            start_time += 'Z'
+
+    if end_time:
+        if end_time.endswith('h'):
+            hours = int(end_time[:-1])
+            end_time = (datetime.now() - timedelta(hours=hours)).isoformat() + 'Z'
+        elif not end_time.endswith('Z'):
+            end_time += 'Z'
+
+    with tracer.start_as_span("query_loki_logs") as span:
+        span.set_attribute("query.length", len(query))
+        span.set_attribute("query.limit", limit)
+
+        # Query Loki
+        async with loki_client:
+            result = await loki_client.query_logs(query, start_time, end_time, limit)
+
+        if "error" in result:
+            return result
+
+        # Analyze results
+        analysis = _analyze_log_results(result)
+
+        # Store query for auditing
+        audit_entry = {
+            "timestamp": datetime.now().isoformat(),
+            "query": query,
+            "result_count": len(result.get("data", {}).get("result", [])),
+            "user": "mcp-client"
+        }
+        await ctx.storage.set(f"log_query_audit:{datetime.now().strftime('%Y%m%d_%H%M%S')}", audit_entry)
+
+        return {
+            "query": query,
+            "time_range": {"start": start_time, "end": end_time},
+            "results": result,
+            "analysis": analysis,
+            "metadata": {
+                "total_results": analysis.get("total_entries", 0),
+                "unique_services": analysis.get("unique_services", 0),
+                "time_span": analysis.get("time_span", "unknown"),
+                "query_timestamp": datetime.now().isoformat()
+            }
+        }
+
+@mcp.tool()
+async def analyze_log_patterns(
+    ctx: Context,
+    query: str,
+    time_window: str = "1h",
+    min_occurrences: int = 5
+) -> Dict[str, Any]:
+    """
+    Analyze log patterns and anomalies using Loki queries.
+
+    This tool identifies common log patterns, error spikes, and potential issues
+    by analyzing log data over time windows.
+
+    Args:
+        query: Base LogQL query to analyze
+        time_window: Time window for analysis (e.g., "1h", "24h", "7d")
+        min_occurrences: Minimum occurrences to consider a pattern significant
+
+    Returns:
+        Pattern analysis with anomalies, trends, and recommendations
+    """
+    # Security validation
+    if not rate_limiter.is_allowed("analyze_patterns"):
+        return {"error": "Rate limit exceeded. Pattern analysis is restricted."}
+
+    if not query or len(query) > 300:
+        return {"error": "Query must be 1-300 characters"}
+
+    allowed_windows = ["1h", "6h", "12h", "24h", "7d", "30d"]
+    if time_window not in allowed_windows:
+        return {"error": f"Invalid time window. Must be one of: {allowed_windows}"}
+
+    if not (1 <= min_occurrences <= 1000):
+        return {"error": "Minimum occurrences must be between 1 and 1000"}
+
+    with tracer.start_as_span("analyze_log_patterns") as span:
+        span.set_attribute("analysis.window", time_window)
+        span.set_attribute("analysis.min_occurrences", min_occurrences)
+
+        # Parse time window
+        if time_window.endswith('h'):
+            hours = int(time_window[:-1])
+            start_time = (datetime.now() - timedelta(hours=hours)).isoformat() + 'Z'
+        elif time_window.endswith('d'):
+            days = int(time_window[:-1])
+            start_time = (datetime.now() - timedelta(days=days)).isoformat() + 'Z'
+        else:
+            return {"error": "Invalid time window format"}
+
+        # Query Loki for pattern analysis
+        async with loki_client:
+            result = await loki_client.query_logs(query, start_time, limit=1000)
+
+        if "error" in result:
+            return result
+
+        # Analyze patterns
+        patterns = _extract_log_patterns(result, min_occurrences)
+        anomalies = _detect_log_anomalies(result, time_window)
+        trends = _analyze_log_trends(result)
+
+        return {
+            "query": query,
+            "time_window": time_window,
+            "patterns": {
+                "common_patterns": patterns,
+                "pattern_count": len(patterns),
+                "min_occurrences": min_occurrences
+            },
+            "anomalies": anomalies,
+            "trends": trends,
+            "recommendations": _generate_log_recommendations(patterns, anomalies, trends),
+            "analysis_timestamp": datetime.now().isoformat()
+        }
+
+@mcp.tool()
+async def correlate_logs_and_metrics(
+    ctx: Context,
+    log_query: str,
+    metric_query: str,
+    time_window: str = "1h"
+) -> Dict[str, Any]:
+    """
+    Correlate log entries with metrics for comprehensive incident analysis.
+
+    This tool combines Loki log querying with Prometheus metrics to provide
+    unified observability insights and root cause analysis.
+
+    Args:
+        log_query: LogQL query for log correlation
+        metric_query: PromQL query for metric correlation
+        time_window: Time window for correlation analysis
+
+    Returns:
+        Correlated analysis of logs and metrics with insights
+    """
+    # Security validation
+    if not rate_limiter.is_allowed("correlate_data"):
+        return {"error": "Rate limit exceeded. Correlation analysis is restricted."}
+
+    if not log_query or len(log_query) > 300:
+        return {"error": "Log query must be 1-300 characters"}
+
+    if not metric_query or len(metric_query) > 200:
+        return {"error": "Metric query must be 1-200 characters"}
+
+    allowed_windows = ["1h", "6h", "12h", "24h", "7d"]
+    if time_window not in allowed_windows:
+        return {"error": f"Invalid time window. Must be one of: {allowed_windows}"}
+
+    with tracer.start_as_span("correlate_logs_and_metrics") as span:
+        span.set_attribute("correlation.window", time_window)
+
+        # Parse time window
+        if time_window.endswith('h'):
+            hours = int(time_window[:-1])
+            start_time = (datetime.now() - timedelta(hours=hours)).isoformat() + 'Z'
+        else:
+            days = int(time_window[:-1])
+            start_time = (datetime.now() - timedelta(days=days)).isoformat() + 'Z'
+
+        # Query logs
+        async with loki_client:
+            log_results = await loki_client.query_logs(log_query, start_time, limit=500)
+
+        # Query metrics (simplified - would need Prometheus client)
+        metric_results = {"mock_data": f"Metrics for query: {metric_query}"}
+
+        # Correlate data
+        correlation = _correlate_logs_metrics(log_results, metric_results)
+
+        return {
+            "correlation": {
+                "log_query": log_query,
+                "metric_query": metric_query,
+                "time_window": time_window,
+                "correlation_strength": correlation.get("strength", 0),
+                "key_events": correlation.get("key_events", []),
+                "insights": correlation.get("insights", [])
+            },
+            "raw_data": {
+                "logs": log_results,
+                "metrics": metric_results
+            },
+            "analysis_timestamp": datetime.now().isoformat()
+        }
+
+# Helper functions
+def _generate_health_recommendations(result: HealthCheckResult) -> List[str]:
+    """Generate health check recommendations."""
+    recommendations = []
+
+    if result.status != "healthy":
+        recommendations.append("Service is currently unhealthy - investigate immediately")
+
+    if result.response_time_ms > 1000:
+        recommendations.append("Response time is high (>1s) - consider optimization")
+
+    if result.error_message:
+        recommendations.append(f"Address the error: {result.error_message}")
+
+    return recommendations
+
+def _analyze_performance_trends(history: List[Dict]) -> Dict[str, Any]:
+    """Analyze performance trends from historical data."""
+    if len(history) < 2:
+        return {"insufficient_data": True}
+
+    recent = history[-10:]  # Last 10 data points
+    cpu_avg = sum(h.get("cpu_percent", 0) for h in recent) / len(recent)
+    memory_avg = sum(h.get("memory_mb", 0) for h in recent) / len(recent)
+
+    return {
+        "cpu_trend": "increasing" if recent[-1]["cpu_percent"] > cpu_avg else "stable",
+        "memory_trend": "increasing" if recent[-1]["memory_mb"] > memory_avg else "stable",
+        "avg_cpu_percent": cpu_avg,
+        "avg_memory_mb": memory_avg,
+    }
+
+async def _check_performance_alerts(ctx: Context, metrics: PerformanceMetrics) -> List[Dict]:
+    """Check for performance alerts."""
+    # Placeholder - would implement actual alert checking
+    return []
+
+def _generate_performance_recommendations(metrics: PerformanceMetrics, trends: Dict) -> List[str]:
+    """Generate performance recommendations."""
+    recommendations = []
+
+    if metrics.cpu_percent > 80:
+        recommendations.append("High CPU usage detected - consider scaling or optimization")
+
+    if metrics.memory_mb > 800:
+        recommendations.append("High memory usage - monitor for memory leaks")
+
+    if trends.get("cpu_trend") == "increasing":
+        recommendations.append("CPU usage is trending upward - plan for scaling")
+
+    return recommendations
+
+# Helper functions for log analysis
+def _analyze_log_results(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Analyze Loki query results."""
+    try:
+        data = result.get("data", {})
+        results = data.get("result", [])
+
+        total_entries = sum(len(result.get("values", [])) for result in results)
+
+        # Extract unique services
+        services = set()
+        for result_item in results:
+            stream = result_item.get("stream", {})
+            service = stream.get("service", stream.get("job", "unknown"))
+            services.add(service)
+
+        # Calculate time span
+        if results:
+            all_timestamps = []
+            for result_item in results:
+                values = result_item.get("values", [])
+                all_timestamps.extend([int(ts) for ts, _ in values])
+
+            if all_timestamps:
+                min_ts = min(all_timestamps)
+                max_ts = max(all_timestamps)
+                time_span_seconds = (max_ts - min_ts) / 1e9
+                time_span = f"{time_span_seconds:.1f} seconds"
+
+        return {
+            "total_entries": total_entries,
+            "unique_services": len(services),
+            "services": list(services),
+            "time_span": time_span if 'time_span' in locals() else "unknown",
+            "result_count": len(results)
+        }
+    except Exception as e:
+        return {"error": f"Analysis failed: {str(e)}"}
+
+def _extract_log_patterns(result: Dict[str, Any], min_occurrences: int) -> List[Dict[str, Any]]:
+    """Extract common log patterns."""
+    patterns = []
+    try:
+        # Simple pattern extraction (would be more sophisticated in production)
+        message_counts = {}
+
+        for result_item in result.get("data", {}).get("result", []):
+            for timestamp, message in result_item.get("values", []):
+                # Simple word-based patterns
+                words = message.lower().split()
+                for i in range(len(words) - 2):
+                    pattern = " ".join(words[i:i+3])
+                    message_counts[pattern] = message_counts.get(pattern, 0) + 1
+
+        # Filter significant patterns
+        significant_patterns = [
+            {"pattern": pattern, "occurrences": count}
+            for pattern, count in message_counts.items()
+            if count >= min_occurrences
+        ]
+
+        patterns = sorted(significant_patterns, key=lambda x: x["occurrences"], reverse=True)[:10]
+
+    except Exception as e:
+        logger.error("Pattern extraction failed", error=str(e))
+
+    return patterns
+
+def _detect_log_anomalies(result: Dict[str, Any], time_window: str) -> List[Dict[str, Any]]:
+    """Detect log anomalies."""
+    anomalies = []
+    try:
+        # Simple anomaly detection (spike in error logs)
+        error_count = 0
+        total_count = 0
+
+        for result_item in result.get("data", {}).get("result", []):
+            for timestamp, message in result_item.get("values", []):
+                total_count += 1
+                if "error" in message.lower() or "exception" in message.lower():
+                    error_count += 1
+
+        error_rate = error_count / total_count if total_count > 0 else 0
+
+        if error_rate > 0.1:  # More than 10% errors
+            anomalies.append({
+                "type": "high_error_rate",
+                "severity": "high",
+                "description": f"Error rate of {error_rate:.1%} detected",
+                "error_count": error_count,
+                "total_count": total_count
+            })
+
+    except Exception as e:
+        logger.error("Anomaly detection failed", error=str(e))
+
+    return anomalies
+
+def _analyze_log_trends(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Analyze log trends over time."""
+    trends = {"trend": "stable", "description": "Log volume appears stable"}
+    try:
+        # Simple trend analysis
+        timestamps = []
+
+        for result_item in result.get("data", {}).get("result", []):
+            for ts, message in result_item.get("values", []):
+                timestamps.append(int(ts))
+
+        if len(timestamps) > 10:
+            # Check if logs are becoming more frequent
+            recent = sorted(timestamps)[-10:]
+            older = sorted(timestamps)[:-10]
+
+            if recent and older:
+                recent_avg_interval = (recent[-1] - recent[0]) / (len(recent) - 1) if len(recent) > 1 else 0
+                older_avg_interval = (older[-1] - older[0]) / (len(older) - 1) if len(older) > 1 else 0
+
+                if older_avg_interval > 0 and recent_avg_interval < older_avg_interval * 0.8:
+                    trends = {
+                        "trend": "increasing",
+                        "description": "Log frequency is increasing",
+                        "change_percentage": ((older_avg_interval - recent_avg_interval) / older_avg_interval) * 100
+                    }
+
+    except Exception as e:
+        logger.error("Trend analysis failed", error=str(e))
+
+    return trends
+
+def _generate_log_recommendations(patterns: List, anomalies: List, trends: Dict) -> List[str]:
+    """Generate log analysis recommendations."""
+    recommendations = []
+
+    if anomalies:
+        recommendations.append("Address detected anomalies immediately")
+
+    if trends.get("trend") == "increasing":
+        recommendations.append("Monitor increasing log volume for potential issues")
+
+    if len(patterns) > 5:
+        recommendations.append("Consider implementing log aggregation for common patterns")
+
+    if not recommendations:
+        recommendations.append("Log patterns appear normal - continue monitoring")
+
+    return recommendations
+
+def _correlate_logs_metrics(logs: Dict, metrics: Dict) -> Dict[str, Any]:
+    """Correlate logs with metrics."""
+    return {
+        "strength": 0.7,  # Mock correlation strength
+        "key_events": ["Service restart", "High CPU usage"],
+        "insights": ["Logs show errors during high CPU periods", "Correlation suggests resource constraints"]
+    }
+
+def main():
+    """Main entry point for the observability MCP server."""
+    logger.info("Starting Observability MCP Server", version="0.1.0")
+    run_server(mcp, server_name="observability-mcp")
+
+if __name__ == "__main__":
+    main()

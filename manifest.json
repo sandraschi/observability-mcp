@@ -1,0 +1,69 @@
+{
+  "name": "observability-mcp",
+  "version": "0.1.0",
+  "description": "Production-grade observability server for monitoring MCP ecosystems with OpenTelemetry, Prometheus, and Loki.",
+  "author": "Sandra Schipal",
+  "repository": "https://github.com/sandraschi/observability-mcp",
+  "runtime": "python",
+  "entrypoint": "observability_mcp.cli:main",
+  "tools": [
+    {
+      "name": "monitor_server_health",
+      "description": "Perform real-time health check on an MCP server or web service.",
+      "parameters": {
+        "service_url": "string",
+        "timeout_seconds": "number",
+        "expected_status_codes": "array"
+      }
+    },
+    {
+      "name": "collect_performance_metrics",
+      "description": "Collect comprehensive performance metrics for the system or specific service.",
+      "parameters": {
+        "service_name": "string"
+      }
+    },
+    {
+      "name": "send_logs_to_loki",
+      "description": "Send custom log entries to Loki for centralized log aggregation.",
+      "parameters": {
+        "log_message": "string",
+        "level": "string",
+        "labels": "object"
+      }
+    },
+    {
+      "name": "query_loki_logs",
+      "description": "Query logs from Loki with advanced filtering and analysis.",
+      "parameters": {
+        "query": "string",
+        "start_time": "string",
+        "end_time": "string",
+        "limit": "integer"
+      }
+    },
+    {
+      "name": "analyze_log_patterns",
+      "description": "Analyze log patterns and anomalies using Loki queries.",
+      "parameters": {
+        "query": "string",
+        "time_window": "string",
+        "min_occurrences": "integer"
+      }
+    },
+    {
+      "name": "correlate_logs_and_metrics",
+      "description": "Correlate log entries with metrics for comprehensive incident analysis.",
+      "parameters": {
+        "log_query": "string",
+        "metric_query": "string",
+        "time_window": "string"
+      }
+    }
+  ],
+  "capabilities": {
+    "logging": true,
+    "metrics": true,
+    "tracing": true
+  }
+}

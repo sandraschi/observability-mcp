@@ -2,33 +2,9 @@ set windows-shell := ["pwsh.exe", "-NoLogo", "-Command"]
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
 
-# Display the SOTA Industrial Dashboard
+# Open the interactive recipe dashboard in the browser
 default:
-    @$lines = Get-Content '{{justfile()}}'; \
-    Write-Host ' [SOTA] Industrial Operations Dashboard v1.3.2' -ForegroundColor White -BackgroundColor Cyan; \
-    Write-Host '' ; \
-    $currentCategory = ''; \
-    foreach ($line in $lines) { \
-        if ($line -match '^# ── ([^─]+) ─') { \
-            $currentCategory = $matches[1].Trim(); \
-            Write-Host "`n  $currentCategory" -ForegroundColor Cyan; \
-            Write-Host ('  ' + ('─' * 45)) -ForegroundColor Gray; \
-        } elseif ($line -match '^# ([^─].+)') { \
-            $desc = $matches[1].Trim(); \
-            $idx = [array]::IndexOf($lines, $line); \
-            if ($idx -lt $lines.Count - 1) { \
-                $nextLine = $lines[$idx + 1]; \
-                if ($nextLine -match '^([a-z0-9-]+):') { \
-                    $recipe = $matches[1]; \
-                    $pad = ' ' * [math]::Max(2, (18 - $recipe.Length)); \
-                    Write-Host "    $recipe" -ForegroundColor White -NoNewline; \
-                    Write-Host "$pad$desc" -ForegroundColor Gray; \
-                } \
-            } \
-        } \
-    } \
-    Write-Host "`n  [System State: PROD/HARDENED]" -ForegroundColor DarkGray; \
-    Write-Host ''
+    @pwsh.exe -NoProfile -ExecutionPolicy Bypass -File ../mcp-central-docs/scripts/just-dashboard.ps1 -Path .
 
 # ── Quality ───────────────────────────────────────────────────────────────────
 
@@ -58,3 +34,42 @@ check-sec:
 audit-deps:
     Set-Location '{{justfile_directory()}}'
     uv run safety check
+
+# Perform the "Triple Kill" and restart Docker Desktop (Standard Recovery Protocol)
+docker-reset:
+    @Write-Host " [System] Initiating Docker Triple Kill Protocol..." -ForegroundColor Yellow
+    -taskkill /F /IM "Docker Desktop.exe" /T
+    -taskkill /F /IM "com.docker.backend.exe" /T
+    -taskkill /F /IM "vpnkit.exe" /T
+    @Write-Host " [System] Processes terminated. Restarting Docker Desktop..." -ForegroundColor Cyan
+    Start-Process "C:\Program Files\Docker\Docker\Docker Desktop.exe"
+
+# Check Docker and monitoring stack status
+docker-status:
+    @Write-Host " [System] Probing Docker infrastructure..." -ForegroundColor Cyan
+    docker version
+    docker-compose ps
+
+# ── Development ───────────────────────────────────────────────────────────────
+
+# Run the MCP server in development mode
+server:
+    uv run observability-mcp
+
+# Run the Web SOTA dashboard
+web:
+    Set-Location '{{justfile_directory()}}\web_sota'
+    npm run dev
+
+# Run both server and web dashboard (requires multiple terminals or backgrounding)
+dev:
+    Write-Host "Tip: Use separate terminals for 'just server' and 'just web'" -ForegroundColor Yellow
+    just server
+
+# ── Deployment ────────────────────────────────────────────────────────────────
+
+# Build the project for production
+build:
+    uv build
+    Set-Location '{{justfile_directory()}}\web_sota'
+    npm run build

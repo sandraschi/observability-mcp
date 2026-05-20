@@ -12,11 +12,12 @@ from rich.table import Table
 app = typer.Typer(help="Observability MCP Server CLI")
 console = Console()
 
-@app.command()
-def run():
+@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def run(ctx: typer.Context):
     """Run the observability MCP server."""
     from .server import main
-    main()
+    # Pass extra arguments to server.main
+    main(ctx.args)
 
 @app.command()
 def health():

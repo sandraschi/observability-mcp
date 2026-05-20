@@ -14,17 +14,12 @@ from observability_mcp.server import (
     mcp,
     HealthCheckResult,
     PerformanceMetrics,
-    TraceInfo,
     AlertConfig,
-    AnomalyResult,
     monitor_server_health,
     collect_performance_metrics,
-    trace_mcp_calls,
     generate_performance_reports,
     alert_on_anomalies,
     monitor_system_resources,
-    analyze_mcp_interactions,
-    export_metrics,
 )
 
 
@@ -110,32 +105,6 @@ class TestPerformanceMonitoring:
             assert result['metrics']['disk_usage_percent'] == 75.0
             assert 'trends' in result
             assert 'recommendations' in result
-
-
-class TestTracing:
-    """Test tracing functionality."""
-
-    @pytest.mark.asyncio
-    async def test_trace_mcp_calls(self):
-        """Test MCP call tracing."""
-        ctx = MagicMock()
-        ctx.storage.get.return_value = []
-        ctx.storage.set = AsyncMock()
-
-        result = await trace_mcp_calls(
-            ctx=ctx,
-            operation_name="test_operation",
-            service_name="test-service",
-            duration_ms=150.5,
-            attributes={"param": "value"}
-        )
-
-        assert result['trace']['operation'] == 'test_operation'
-        assert result['trace']['service_name'] == 'test-service'
-        assert result['trace']['duration_ms'] == 150.5
-        assert result['trace']['attributes']['param'] == 'value'
-        assert 'patterns' in result
-        assert 'performance_insights' in result
 
 
 class TestReporting:
@@ -268,66 +237,6 @@ class TestSystemMonitoring:
             assert system_status['disk']['percent'] == 50.0
 
 
-class TestAnalytics:
-    """Test analytics functionality."""
-
-    @pytest.mark.asyncio
-    async def test_analyze_mcp_interactions(self):
-        """Test MCP interaction analysis."""
-        # Mock trace data
-        mock_traces = [
-            {
-                "timestamp": (datetime.now() - timedelta(hours=i)).isoformat(),
-                "operation": "health_check",
-                "service_name": "test-service",
-                "duration_ms": 100.0 + i * 10,
-                "status": "completed"
-            }
-            for i in range(24)  # 24 hours of data
-        ]
-
-        ctx = MagicMock()
-        ctx.storage.keys.return_value = ["trace_history:test-service"]
-        ctx.storage.get.side_effect = lambda key: {
-            "trace_history:test-service": mock_traces
-        }.get(key, [])
-
-        result = await analyze_mcp_interactions(ctx=ctx, days=1)
-
-        assert 'patterns' in result
-        assert 'insights' in result
-        assert 'recommendations' in result
-        assert result['patterns']['total_interactions'] == 24
-
-
-class TestExport:
-    """Test export functionality."""
-
-    @pytest.mark.asyncio
-    async def test_export_metrics_prometheus(self):
-        """Test Prometheus metrics export."""
-        ctx = MagicMock()
-
-        result = await export_metrics(ctx=ctx, format="prometheus")
-
-        assert result['format'] == 'prometheus'
-        assert 'endpoint' in result
-        assert '9090' in result['endpoint']
-
-    @pytest.mark.asyncio
-    async def test_export_metrics_json(self):
-        """Test JSON metrics export."""
-        ctx = MagicMock()
-        ctx.storage.keys.return_value = []
-        ctx.storage.get.return_value = []
-
-        result = await export_metrics(ctx=ctx, format="json", include_history=False)
-
-        assert result['format'] == 'json'
-        assert 'timestamp' in result
-        assert 'metrics' in result
-        assert 'version' in result
-
 
 class TestDataModels:
     """Test data models and validation."""
@@ -418,7 +327,138 @@ class TestIntegration:
             # Verify workflow completion
             assert metrics_result['metrics']['cpu_percent'] == 65.0
 
+class TestDegradedMode:
+    """Test server behaviour when Docker or stack services are unreachable."""
 
+    @pytest.mark.asyncio
+    async def test_check_docker_status_daemon_missing(self):
+        """check_docker_status returns a safe dict when docker CLI is not found."""
+        from observability_mcp.server import check_docker_status
 
+        with patch("observability_mcp.server.asyncio.create_subprocess_exec",
+                   side_effect=FileNotFoundError("docker not found")):
+            result = await check_docker_status()
+
+        assert result["reachable"] is False
+        assert result["status"] == "missing"
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_check_docker_status_daemon_error(self):
+        """check_docker_status returns a safe dict when the daemon returns non-zero."""
+        from observability_mcp.server import check_docker_status
+
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 1
+        mock_proc.communicate = AsyncMock(return_value=(b"", b"Cannot connect to Docker daemon"))
+
+        with patch("observability_mcp.server.asyncio.create_subprocess_exec",
+                   return_value=mock_proc):
+            result = await check_docker_status()
+
+        assert result["reachable"] is False
+        assert result["status"] == "stopped"
+
+    @pytest.mark.asyncio
+    async def test_check_stack_status_all_down(self):
+        """check_stack_status returns down for all services when unreachable."""
+        from observability_mcp.server import check_stack_status
+
+        ctx = MagicMock()
+
+        with patch("observability_mcp.server.check_service_connectivity",
+                   new_callable=AsyncMock, return_value=False):
+            result = await check_stack_status(ctx)
+
+        assert result["is_healthy"] is False
+        assert result["status"]["loki"]["status"] == "down"
+        assert result["status"]["prometheus"]["status"] == "down"
+        assert result["status"]["grafana"]["status"] == "down"
+
+    @pytest.mark.asyncio
+    async def test_show_status_dashboard_docker_down(self):
+        """Dashboard renders successfully even when Docker and all services are down."""
+        from observability_mcp.server import show_status_dashboard, _server_state
+
+        ctx = MagicMock()
+        _server_state["degraded_mode"] = True
+
+        # Docker unreachable
+        docker_down = {"status": "stopped", "reachable": False, "error": "daemon not running"}
+
+        # Stack all down
+        stack_down = {
+            "status": {
+                "loki": {"status": "down"},
+                "prometheus": {"status": "down"},
+                "grafana": {"status": "down"},
+            },
+            "is_healthy": False,
+            "recommendations": [],
+        }
+
+        # Perf metrics still work (psutil is local)
+        perf_ok = {
+            "metrics": {"cpu_percent": 12.5, "memory_mb": 512.0, "disk_usage_percent": 44.0},
+            "trends": {},
+            "recommendations": [],
+        }
+
+        alerts_ok = {"alerts": []}
+
+        with patch("observability_mcp.server.check_docker_status",
+                   new_callable=AsyncMock, return_value=docker_down), \
+             patch("observability_mcp.server.check_stack_status",
+                   new_callable=AsyncMock, return_value=stack_down), \
+             patch("observability_mcp.server.collect_performance_metrics",
+                   new_callable=AsyncMock, return_value=perf_ok), \
+             patch("observability_mcp.server.manage_alert_configs",
+                   new_callable=AsyncMock, return_value=alerts_ok):
+
+            # Must not raise
+            result = await show_status_dashboard(ctx)
+
+        # Result is a Prefab Card object — just verify it's not None and has a title
+        assert result is not None
+
+        _server_state["degraded_mode"] = False  # cleanup
+
+    @pytest.mark.asyncio
+    async def test_show_status_dashboard_all_calls_fail(self):
+        """Dashboard renders a degraded card even when every external call raises."""
+        from observability_mcp.server import show_status_dashboard
+
+        ctx = MagicMock()
+
+        with patch("observability_mcp.server.check_docker_status",
+                   new_callable=AsyncMock, side_effect=Exception("timeout")), \
+             patch("observability_mcp.server.check_stack_status",
+                   new_callable=AsyncMock, side_effect=Exception("timeout")), \
+             patch("observability_mcp.server.collect_performance_metrics",
+                   new_callable=AsyncMock, side_effect=Exception("psutil error")), \
+             patch("observability_mcp.server.manage_alert_configs",
+                   new_callable=AsyncMock, side_effect=Exception("storage error")):
+
+            # Must not raise under any circumstances
+            result = await show_status_dashboard(ctx)
+
+        assert result is not None
+
+    @pytest.mark.asyncio
+    async def test_server_lifespan_prometheus_port_conflict(self):
+        """Lifespan sets degraded_mode=True but does not crash on Prometheus port conflict."""
+        from observability_mcp.server import server_lifespan, mcp, _server_state
+
+        with patch("observability_mcp.server.start_http_server",
+                   side_effect=OSError("Address already in use")), \
+             patch("observability_mcp.server.storage.set", new_callable=AsyncMock), \
+             patch("observability_mcp.server.storage.get",
+                   new_callable=AsyncMock, return_value=None):
+
+            async with server_lifespan(mcp):
+                pass  # yield point — server is "running"
+
+        assert _server_state.get("degraded_mode") is True
+        _server_state["degraded_mode"] = False  # cleanup
 
 

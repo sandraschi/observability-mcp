@@ -209,9 +209,9 @@ async def run_server_async(
         args: Parsed CLI arguments (optional, will parse if None).
         server_name: Server name for logging and help text.
     """
-    if args is None:
+    if args is None or isinstance(args, list):
         parser = create_argument_parser(server_name)
-        args = parser.parse_args()
+        args = parser.parse_args(args) if isinstance(args, list) else parser.parse_args()
 
     # Configure logging
     if args.debug:
@@ -242,7 +242,7 @@ async def run_server_async(
             port = config["port"]
             logger.warning("SSE mode is deprecated. Migrate to HTTP Streamable (--http).")
             logger.info(f"Running in SSE mode: http://{host}:{port}")
-            await mcp_app.run_sse_async(host=host, port=port)
+            await mcp_app.run_async(transport='sse', host=host, port=port)
 
     except asyncio.CancelledError:
         logger.info(f"{server_name} task cancelled")
