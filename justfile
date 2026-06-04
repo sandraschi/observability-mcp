@@ -33,7 +33,7 @@ fix:
 # Automated verification (SOTA mandatory)
 test:
     Set-Location '{{justfile_directory()}}'
-    uv run --extra test pytest tests -q
+    uv run --extra test pytest tests -q --cov=observability_mcp --cov-report=term-missing
 
 # ── Development ───────────────────────────────────────────────────────────────
 

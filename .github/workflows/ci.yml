@@ -1,13 +1,39 @@
+# Lightweight CI: one job, ruff + pytest (no coverage HTML, no MCPB, no npm).
+# MCPB + release assets: .github/workflows/mcpb-release.yml (tags only).
+# Full web build: `just build` locally.
+
 name: CI
 
 on:
   push:
     branches: [main, master]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "llms*.txt"
+      - "archive/**"
+      - ".cursor/**"
+      - "_dashboard/**"
   pull_request:
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "llms*.txt"
+      - "archive/**"
+      - ".cursor/**"
+      - "_dashboard/**"
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
-  python:
+  check:
     runs-on: ubuntu-latest
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
 
@@ -15,32 +41,13 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Sync with test extras
-        run: uv sync --extra test
+      - name: Sync (test extras only)
+        run: uv sync --extra test --frozen
 
-      - name: Ruff check
-        run: uv run ruff check src tests
-
-      - name: Ruff format
-        run: uv run ruff format --check src tests
+      - name: Ruff
+        run: |
+          uv run ruff check src tests
+          uv run ruff format --check src tests
 
       - name: Pytest
-        run: uv run pytest
-
-      - name: MCPB pack
-        run: uv run python build_mcpb.py
-
-  web:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Install and build web_sota
-        working-directory: web_sota
-        run: |
-          npm ci
-          npm run build
+        run: uv run pytest tests -q --no-cov

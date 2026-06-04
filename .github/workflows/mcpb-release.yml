@@ -12,13 +12,16 @@ permissions:
 jobs:
   build-mcpb:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
       - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
 
       - name: Sync
-        run: uv sync
+        run: uv sync --frozen
 
       - name: Build MCPB
         run: uv run python build_mcpb.py

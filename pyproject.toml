@@ -75,9 +75,6 @@ testpaths = ["tests"]
 asyncio_mode = "strict"
 addopts = [
     "--strict-markers",
-    "--cov=observability_mcp",
-    "--cov-report=term-missing",
-    "--cov-report=html:htmlcov",
 ]
 
 [tool.ruff]
