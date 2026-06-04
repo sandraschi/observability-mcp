@@ -1,10 +1,33 @@
+import {
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  Loader2,
+  Search,
+  TrendingUp,
+} from "lucide-react";
 import { useState } from "react";
 import { callTool } from "../lib/mcp-client";
-import { Search, AlertTriangle, TrendingUp, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 
-interface LogEntry { stream: Record<string, string>; values: [string, string][]; }
-interface QueryResult { query: string; results: { data?: { result?: LogEntry[] } }; analysis: Record<string, unknown>; }
-interface PatternResult { query: string; time_window: string; patterns: { common_patterns: Array<{ pattern: string; occurrences: number }> }; anomalies: Array<{ type: string; severity: string; description: string }>; trends: { trend: string; description: string }; recommendations: string[]; }
+interface LogEntry {
+  stream: Record<string, string>;
+  values: [string, string][];
+}
+interface QueryResult {
+  query: string;
+  results: { data?: { result?: LogEntry[] } };
+  analysis: Record<string, unknown>;
+}
+interface PatternResult {
+  query: string;
+  time_window: string;
+  patterns: {
+    common_patterns: Array<{ pattern: string; occurrences: number }>;
+  };
+  anomalies: Array<{ type: string; severity: string; description: string }>;
+  trends: { trend: string; description: string };
+  recommendations: string[];
+}
 
 const TIME_WINDOWS = ["1h", "6h", "12h", "24h", "7d"];
 
@@ -16,8 +39,12 @@ export function LogExplorer() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
-  const [patternResult, setPatternResult] = useState<PatternResult | null>(null);
-  const [expandedStreams, setExpandedStreams] = useState<Set<number>>(new Set());
+  const [patternResult, setPatternResult] = useState<PatternResult | null>(
+    null,
+  );
+  const [expandedStreams, setExpandedStreams] = useState<Set<number>>(
+    new Set(),
+  );
 
   async function runQuery() {
     if (!query.trim()) return;
@@ -25,11 +52,18 @@ export function LogExplorer() {
     setError(null);
     try {
       if (mode === "query") {
-        const result = await callTool("query_loki_logs", { query: query.trim(), limit }) as QueryResult;
+        const result = (await callTool("query_loki_logs", {
+          query: query.trim(),
+          limit,
+        })) as QueryResult;
         setQueryResult(result);
         setPatternResult(null);
       } else {
-        const result = await callTool("analyze_log_patterns", { query: query.trim(), time_window: timeWindow, min_occurrences: 2 }) as PatternResult;
+        const result = (await callTool("analyze_log_patterns", {
+          query: query.trim(),
+          time_window: timeWindow,
+          min_occurrences: 2,
+        })) as PatternResult;
         setPatternResult(result);
         setQueryResult(null);
       }
@@ -43,17 +77,22 @@ export function LogExplorer() {
   const entries: LogEntry[] = queryResult?.results?.data?.result ?? [];
   const totalEntries = entries.reduce((n, e) => n + e.values.length, 0);
 
-  const toggleStream = (i: number) => setExpandedStreams((s) => {
-    const n = new Set(s);
-    n.has(i) ? n.delete(i) : n.add(i);
-    return n;
-  });
+  const toggleStream = (i: number) =>
+    setExpandedStreams((s) => {
+      const n = new Set(s);
+      n.has(i) ? n.delete(i) : n.add(i);
+      return n;
+    });
 
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold font-mono text-zinc-100">Log Explorer</h1>
-        <p className="text-zinc-500 font-mono text-sm mt-1">LogQL queries via Loki</p>
+        <h1 className="text-2xl font-bold font-mono text-zinc-100">
+          Log Explorer
+        </h1>
+        <p className="text-zinc-500 font-mono text-sm mt-1">
+          LogQL queries via Loki
+        </p>
       </div>
 
       {/* Controls */}
@@ -90,7 +129,8 @@ export function LogExplorer() {
               type="number"
               value={limit}
               onChange={(e) => setLimit(Number(e.target.value))}
-              min={1} max={1000}
+              min={1}
+              max={1000}
               className="w-20 bg-zinc-800/60 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm font-mono text-zinc-100 focus:outline-none focus:border-amber-500/50 transition-colors text-center"
               title="Limit"
             />
@@ -116,7 +156,11 @@ export function LogExplorer() {
             disabled={loading}
             className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 disabled:bg-zinc-700 disabled:text-zinc-500 text-zinc-900 font-mono text-sm font-semibold rounded-lg transition-colors flex items-center gap-2"
           >
-            {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+            {loading ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <Search className="w-3 h-3" />
+            )}
             run
           </button>
         </div>
@@ -129,7 +173,11 @@ export function LogExplorer() {
             '{service="observability-mcp"} |= "error"',
             '{level="error"}',
           ].map((q) => (
-            <button key={q} onClick={() => setQuery(q)} className="text-zinc-500 hover:text-amber-400 transition-colors">
+            <button
+              key={q}
+              onClick={() => setQuery(q)}
+              className="text-zinc-500 hover:text-amber-400 transition-colors"
+            >
               {q}
             </button>
           ))}
@@ -149,12 +197,21 @@ export function LogExplorer() {
             <span>{totalEntries} log entries</span>
             <span className="text-zinc-700">·</span>
             <span>{entries.length} streams</span>
-            {queryResult.analysis && typeof queryResult.analysis === "object" && (queryResult.analysis as Record<string, unknown>).total_entries !== undefined && (
-              <>
-                <span className="text-zinc-700">·</span>
-                <span>{String((queryResult.analysis as Record<string, unknown>).unique_services ?? 0)} services</span>
-              </>
-            )}
+            {queryResult.analysis &&
+              typeof queryResult.analysis === "object" &&
+              (queryResult.analysis as Record<string, unknown>)
+                .total_entries !== undefined && (
+                <>
+                  <span className="text-zinc-700">·</span>
+                  <span>
+                    {String(
+                      (queryResult.analysis as Record<string, unknown>)
+                        .unique_services ?? 0,
+                    )}{" "}
+                    services
+                  </span>
+                </>
+              )}
           </div>
 
           {entries.length === 0 && (
@@ -164,7 +221,10 @@ export function LogExplorer() {
           )}
 
           {entries.map((entry, i) => (
-            <div key={i} className="border border-zinc-800 rounded-xl overflow-hidden">
+            <div
+              key={i}
+              className="border border-zinc-800 rounded-xl overflow-hidden"
+            >
               <button
                 className="w-full px-5 py-3 flex items-center justify-between hover:bg-zinc-800/30 transition-colors"
                 onClick={() => toggleStream(i)}
@@ -179,7 +239,11 @@ export function LogExplorer() {
                 </div>
                 <div className="flex items-center gap-2 text-xs font-mono text-zinc-600 flex-shrink-0 ml-4">
                   {entry.values.length} entries
-                  {expandedStreams.has(i) ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                  {expandedStreams.has(i) ? (
+                    <ChevronUp className="w-3 h-3" />
+                  ) : (
+                    <ChevronDown className="w-3 h-3" />
+                  )}
                 </div>
               </button>
               {expandedStreams.has(i) && (
@@ -188,11 +252,18 @@ export function LogExplorer() {
                     const t = new Date(Number(ts) / 1_000_000);
                     const isError = /error|exception|fail/i.test(msg);
                     return (
-                      <div key={j} className="px-5 py-2 flex gap-4 text-xs font-mono hover:bg-zinc-900/40">
+                      <div
+                        key={j}
+                        className="px-5 py-2 flex gap-4 text-xs font-mono hover:bg-zinc-900/40"
+                      >
                         <span className="text-zinc-700 flex-shrink-0 w-24">
                           {t.toLocaleTimeString()}
                         </span>
-                        <span className={isError ? "text-red-400" : "text-zinc-400"}>{msg}</span>
+                        <span
+                          className={isError ? "text-red-400" : "text-zinc-400"}
+                        >
+                          {msg}
+                        </span>
                       </div>
                     );
                   })}
@@ -207,19 +278,29 @@ export function LogExplorer() {
       {patternResult && !loading && (
         <div className="space-y-6">
           <div className="text-xs font-mono text-zinc-500">
-            window: {patternResult.time_window} · {patternResult.patterns.common_patterns.length} patterns
+            window: {patternResult.time_window} ·{" "}
+            {patternResult.patterns.common_patterns.length} patterns
           </div>
 
           {/* Anomalies */}
           {patternResult.anomalies.length > 0 && (
             <div className="space-y-2">
-              <h3 className="text-xs font-mono uppercase tracking-widest text-red-500">Anomalies</h3>
+              <h3 className="text-xs font-mono uppercase tracking-widest text-red-500">
+                Anomalies
+              </h3>
               {patternResult.anomalies.map((a, i) => (
-                <div key={i} className="border border-red-900/40 bg-red-950/20 rounded-lg px-4 py-3 flex items-start gap-3">
+                <div
+                  key={i}
+                  className="border border-red-900/40 bg-red-950/20 rounded-lg px-4 py-3 flex items-start gap-3"
+                >
                   <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
                   <div>
-                    <div className="text-sm font-mono text-red-300">{a.description}</div>
-                    <div className="text-xs font-mono text-zinc-500 mt-1">{a.type} · {a.severity}</div>
+                    <div className="text-sm font-mono text-red-300">
+                      {a.description}
+                    </div>
+                    <div className="text-xs font-mono text-zinc-500 mt-1">
+                      {a.type} · {a.severity}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -231,7 +312,9 @@ export function LogExplorer() {
             <TrendingUp className="w-4 h-4 text-zinc-500" />
             <div className="text-sm font-mono text-zinc-400">
               {patternResult.trends.description}
-              <span className={`ml-2 text-xs ${patternResult.trends.trend === "increasing" ? "text-amber-400" : "text-zinc-600"}`}>
+              <span
+                className={`ml-2 text-xs ${patternResult.trends.trend === "increasing" ? "text-amber-400" : "text-zinc-600"}`}
+              >
                 [{patternResult.trends.trend}]
               </span>
             </div>
@@ -241,12 +324,20 @@ export function LogExplorer() {
           {patternResult.patterns.common_patterns.length > 0 ? (
             <div className="border border-zinc-800 rounded-xl overflow-hidden">
               <div className="px-5 py-3 border-b border-zinc-800 flex justify-between text-xs font-mono text-zinc-600 uppercase tracking-widest">
-                <span>Pattern</span><span>Occurrences</span>
+                <span>Pattern</span>
+                <span>Occurrences</span>
               </div>
               {patternResult.patterns.common_patterns.map((p, i) => (
-                <div key={i} className="px-5 py-2.5 flex justify-between items-center hover:bg-zinc-900/40 border-b border-zinc-900 last:border-0">
-                  <span className="font-mono text-sm text-zinc-300 truncate max-w-md">{p.pattern}</span>
-                  <span className="font-mono text-sm text-amber-400 flex-shrink-0">{p.occurrences}</span>
+                <div
+                  key={i}
+                  className="px-5 py-2.5 flex justify-between items-center hover:bg-zinc-900/40 border-b border-zinc-900 last:border-0"
+                >
+                  <span className="font-mono text-sm text-zinc-300 truncate max-w-md">
+                    {p.pattern}
+                  </span>
+                  <span className="font-mono text-sm text-amber-400 flex-shrink-0">
+                    {p.occurrences}
+                  </span>
                 </div>
               ))}
             </div>
@@ -260,8 +351,12 @@ export function LogExplorer() {
           {patternResult.recommendations.length > 0 && (
             <div className="space-y-1">
               {patternResult.recommendations.map((r, i) => (
-                <div key={i} className="text-xs font-mono text-amber-400/70 flex gap-2">
-                  <span className="text-zinc-600">→</span>{r}
+                <div
+                  key={i}
+                  className="text-xs font-mono text-amber-400/70 flex gap-2"
+                >
+                  <span className="text-zinc-600">→</span>
+                  {r}
                 </div>
               ))}
             </div>

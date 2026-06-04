@@ -1,0 +1,9 @@
+{
+  "name": "observability-mcp",
+  "version": "0.3.0b1",
+  "type": "server",
+  "runtime": "python",
+  "entry_point": "observability_mcp.cli:main",
+  "description": "Fleet observability control plane for unified Grafana, Prometheus, and Loki",
+  "author": "Sandra Schipal"
+}

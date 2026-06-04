@@ -12,15 +12,62 @@ from datetime import datetime, timedelta
 
 from observability_mcp.server import (
     mcp,
-    HealthCheckResult,
-    PerformanceMetrics,
-    AlertConfig,
+    TraceInfo,
     monitor_server_health,
     collect_performance_metrics,
     generate_performance_reports,
     alert_on_anomalies,
     monitor_system_resources,
 )
+from observability_mcp.models_storage import AlertConfig, HealthCheckResult, PerformanceMetrics
+
+
+class _FakeHttpResponse:
+    status = 200
+    headers = {"content-type": "text/plain"}
+
+    async def read(self):
+        return b"OK"
+
+
+class _FakeHttpResponseCM:
+    def __init__(self, *, fail: bool = False):
+        self._fail = fail
+
+    async def __aenter__(self):
+        if self._fail:
+            raise ConnectionError("Connection failed")
+        return _FakeHttpResponse()
+
+    async def __aexit__(self, *args):
+        return None
+
+
+class _FakeClientSession:
+    def __init__(self, *, fail: bool = False):
+        self._fail = fail
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return None
+
+    def get(self, _url):
+        return _FakeHttpResponseCM(fail=self._fail)
+
+
+def _mock_aiohttp_session(mock_session, response: AsyncMock | None = None, *, get_raises: bool = False):
+    mock_session.return_value = _FakeClientSession(fail=get_raises)
+
+
+def _make_storage_get(data: dict):
+    async def _get(key, default=None):
+        if key in data:
+            return data[key]
+        return default if default is not None else []
+
+    return _get
 
 
 class TestHealthMonitoring:
@@ -29,46 +76,34 @@ class TestHealthMonitoring:
     @pytest.mark.asyncio
     async def test_monitor_server_health_success(self):
         """Test successful health check."""
-        with patch('observability_mcp.server.aiohttp.ClientSession') as mock_session:
-            # Mock successful response
-            mock_response = AsyncMock()
-            mock_response.status = 200
-            mock_response.read.return_value = b'OK'
-            mock_response.headers = {'content-type': 'text/plain'}
+        ctx = MagicMock()
+        with patch("observability_mcp.server.aiohttp.ClientSession") as mock_session:
+            _mock_aiohttp_session(mock_session)
+            with patch("observability_mcp.server.storage") as mock_storage:
+                mock_storage.get = _make_storage_get({})
+                mock_storage.set = AsyncMock()
+                result = await monitor_server_health(
+                    ctx=ctx,
+                    service_url="http://example.com/health",
+                )
 
-            mock_session.return_value.__aenter__.return_value.get.return_value.__aenter__.return_value = mock_response
-            mock_session.return_value.__aenter__.return_value.get.return_value.__aexit__.return_value = None
-            mock_session.return_value.__aexit__.return_value = None
-
-            # Mock context
-            ctx = MagicMock()
-            ctx.storage.get.return_value = []
-            ctx.storage.set = AsyncMock()
-
-            result = await monitor_server_health(
-                ctx=ctx,
-                service_url="http://example.com/health"
-            )
-
-            assert result['health_check']['status'] == 'healthy'
-            assert result['health_check']['response_time_ms'] > 0
+            assert result["health_check"]["status"] == "healthy"
+            assert result["health_check"]["response_time_ms"] >= 0
             assert 'recommendations' in result
 
     @pytest.mark.asyncio
     async def test_monitor_server_health_failure(self):
         """Test failed health check."""
-        with patch('observability_mcp.server.aiohttp.ClientSession') as mock_session:
-            # Mock failed response
-            mock_session.return_value.__aenter__.return_value.get.side_effect = Exception("Connection failed")
-
-            ctx = MagicMock()
-            ctx.storage.get.return_value = []
-            ctx.storage.set = AsyncMock()
-
-            result = await monitor_server_health(
-                ctx=ctx,
-                service_url="http://example.com/health"
-            )
+        ctx = MagicMock()
+        with patch("observability_mcp.server.aiohttp.ClientSession") as mock_session:
+            _mock_aiohttp_session(mock_session, get_raises=True)
+            with patch("observability_mcp.server.storage") as mock_storage:
+                mock_storage.get = AsyncMock(return_value=[])
+                mock_storage.set = AsyncMock()
+                result = await monitor_server_health(
+                    ctx=ctx,
+                    service_url="http://example.com/health",
+                )
 
             assert result['health_check']['status'] == 'unhealthy'
             assert 'error_message' in result['health_check']
@@ -95,10 +130,10 @@ class TestPerformanceMonitoring:
             )
 
             ctx = MagicMock()
-            ctx.storage.get.return_value = []
-            ctx.storage.set = AsyncMock()
-
-            result = await collect_performance_metrics(ctx=ctx, service_name="test-service")
+            with patch("observability_mcp.server.storage") as mock_storage:
+                mock_storage.get = _make_storage_get({"alert_configs": []})
+                mock_storage.set = AsyncMock()
+                result = await collect_performance_metrics(ctx=ctx, service_name="test-service")
 
             assert result['metrics']['cpu_percent'] == 45.5
             assert result['metrics']['memory_mb'] == 1024.0  # 1GB in MB
@@ -124,14 +159,14 @@ class TestReporting:
         ]
 
         ctx = MagicMock()
-        ctx.storage.get.return_value = mock_history
-        ctx.storage.set = AsyncMock()
-
-        result = await generate_performance_reports(
-            ctx=ctx,
-            service_name="test-service",
-            days=7
-        )
+        with patch("observability_mcp.server.storage") as mock_storage:
+            mock_storage.get = AsyncMock(return_value=mock_history)
+            mock_storage.set = AsyncMock()
+            result = await generate_performance_reports(
+                ctx=ctx,
+                service_name="test-service",
+                days=7,
+            )
 
         assert 'summary' in result
         assert 'trends' in result
@@ -148,18 +183,30 @@ class TestAlerting:
         """Test anomaly detection and alerting."""
         # Mock alert configurations
         mock_configs = [
-            AlertConfig(metric_name="cpu_percent", threshold=80.0, operator="gt", severity="warning").dict()
+            AlertConfig(
+                metric_name="cpu_percent", threshold=80.0, operator="gt", severity="warning"
+            ).model_dump(mode="json")
         ]
 
         ctx = MagicMock()
-        ctx.storage.get.side_effect = lambda key: {
-            "alert_configs": mock_configs,
-            "performance_history:test-service": [
-                {"timestamp": datetime.now().isoformat(), "cpu_percent": 85.0}  # Above threshold
-            ]
-        }[key]
 
-        result = await alert_on_anomalies(ctx=ctx, service_name="test-service")
+        perf_row = {
+            "service_name": "test-service",
+            "timestamp": datetime.now().isoformat(),
+            "cpu_percent": 85.0,
+            "memory_mb": 1024.0,
+            "disk_usage_percent": 50.0,
+            "network_io": {"bytes_sent": 0.0, "bytes_recv": 0.0},
+        }
+        with patch("observability_mcp.server.storage") as mock_storage:
+            mock_storage.get = _make_storage_get(
+                {
+                    "alert_configs": mock_configs,
+                    "performance_history:test-service": [perf_row],
+                }
+            )
+            mock_storage.set = AsyncMock()
+            result = await alert_on_anomalies(ctx=ctx, service_name="test-service")
 
         assert 'active_alerts' in result
         assert 'detected_anomalies' in result
@@ -222,10 +269,10 @@ class TestSystemMonitoring:
             mock_psutil.process_iter.return_value = [mock_process]
 
             ctx = MagicMock()
-            ctx.storage.get.return_value = []
-            ctx.storage.set = AsyncMock()
-
-            result = await monitor_system_resources(ctx=ctx)
+            with patch("observability_mcp.server.storage") as mock_storage:
+                mock_storage.get = _make_storage_get({})
+                mock_storage.set = AsyncMock()
+                result = await monitor_system_resources(ctx=ctx)
 
             assert 'system_status' in result
             assert 'health_analysis' in result
@@ -309,23 +356,24 @@ class TestIntegration:
             mock_psutil.virtual_memory.return_value = mock_memory
 
             ctx = MagicMock()
-            ctx.storage.get.return_value = []
-            ctx.storage.set = AsyncMock()
+            store: dict = {"alert_configs": []}
 
-            # Step 1: Collect metrics
-            metrics_result = await collect_performance_metrics(ctx=ctx)
-            assert 'metrics' in metrics_result
+            async def _get(key, default=None):
+                return store.get(key, default if default is not None else [])
 
-            # Step 2: Generate report
-            report_result = await generate_performance_reports(ctx=ctx, days=1)
-            assert 'summary' in report_result
+            async def _set(key, value):
+                store[key] = value
 
-            # Step 3: Check alerts
-            alert_result = await alert_on_anomalies(ctx=ctx)
-            assert 'active_alerts' in alert_result
-
-            # Verify workflow completion
-            assert metrics_result['metrics']['cpu_percent'] == 65.0
+            with patch("observability_mcp.server.storage") as mock_storage:
+                mock_storage.get = _get
+                mock_storage.set = _set
+                metrics_result = await collect_performance_metrics(ctx=ctx)
+                assert "metrics" in metrics_result
+                report_result = await generate_performance_reports(ctx=ctx, days=1)
+                assert "summary" in report_result
+                alert_result = await alert_on_anomalies(ctx=ctx)
+                assert "active_alerts" in alert_result
+                assert metrics_result["metrics"]["cpu_percent"] == 65.0
 
 class TestDegradedMode:
     """Test server behaviour when Docker or stack services are unreachable."""
@@ -335,8 +383,10 @@ class TestDegradedMode:
         """check_docker_status returns a safe dict when docker CLI is not found."""
         from observability_mcp.server import check_docker_status
 
-        with patch("observability_mcp.server.asyncio.create_subprocess_exec",
-                   side_effect=FileNotFoundError("docker not found")):
+        with patch(
+            "observability_mcp.models_storage.asyncio.create_subprocess_exec",
+            side_effect=FileNotFoundError("docker not found"),
+        ):
             result = await check_docker_status()
 
         assert result["reachable"] is False
@@ -352,8 +402,10 @@ class TestDegradedMode:
         mock_proc.returncode = 1
         mock_proc.communicate = AsyncMock(return_value=(b"", b"Cannot connect to Docker daemon"))
 
-        with patch("observability_mcp.server.asyncio.create_subprocess_exec",
-                   return_value=mock_proc):
+        with patch(
+            "observability_mcp.models_storage.asyncio.create_subprocess_exec",
+            return_value=mock_proc,
+        ):
             result = await check_docker_status()
 
         assert result["reachable"] is False

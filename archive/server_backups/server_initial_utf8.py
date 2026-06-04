@@ -38,19 +38,16 @@ CONFIGURATION:
     - METRICS_RETENTION_DAYS: Days to keep metrics (default: 30)
 """
 
-import asyncio
-import json
 import os
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import psutil
 import structlog
 from fastmcp import Context, FastMCP
 from opentelemetry import metrics, trace
-from opentelemetry.metrics import Counter, Histogram, UpDownCounter
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
@@ -121,8 +118,8 @@ class HealthCheckResult(BaseModel):
     status: str = Field(description="Status: healthy, degraded, unhealthy")
     response_time_ms: float
     timestamp: datetime
-    details: Dict[str, Any] = Field(default_factory=dict)
-    error_message: Optional[str] = None
+    details: dict[str, Any] = Field(default_factory=dict)
+    error_message: str | None = None
 
 class PerformanceMetrics(BaseModel):
     """Performance metrics for a service."""
@@ -131,9 +128,9 @@ class PerformanceMetrics(BaseModel):
     cpu_percent: float
     memory_mb: float
     disk_usage_percent: float
-    network_io: Dict[str, float]
-    response_times: List[float] = Field(default_factory=list)
-    throughput: Optional[float] = None
+    network_io: dict[str, float]
+    response_times: list[float] = Field(default_factory=list)
+    throughput: float | None = None
     error_rate: float = 0.0
 
 class TraceInfo(BaseModel):
@@ -144,7 +141,7 @@ class TraceInfo(BaseModel):
     start_time: datetime
     duration_ms: float
     status: str
-    attributes: Dict[str, Any] = Field(default_factory=dict)
+    attributes: dict[str, Any] = Field(default_factory=dict)
 
 class AlertConfig(BaseModel):
     """Configuration for alerts."""
@@ -203,8 +200,8 @@ async def monitor_server_health(
     ctx: Context,
     service_url: str,
     timeout_seconds: float = 5.0,
-    expected_status_codes: List[int] = None
-) -> Dict[str, Any]:
+    expected_status_codes: list[int] | None = None
+) -> dict[str, Any]:
     """
     Perform real-time health check on an MCP server or web service.
 
@@ -282,7 +279,7 @@ async def monitor_server_health(
     }
 
 @mcp.tool()
-async def collect_performance_metrics(ctx: Context, service_name: str = "system") -> Dict[str, Any]:
+async def collect_performance_metrics(ctx: Context, service_name: str = "system") -> dict[str, Any]:
     """
     Collect comprehensive performance metrics for the system or specific service.
 
@@ -351,8 +348,8 @@ async def trace_mcp_calls(
     operation_name: str,
     service_name: str,
     duration_ms: float,
-    attributes: Dict[str, Any] = None
-) -> Dict[str, Any]:
+    attributes: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """
     Record a trace for MCP call monitoring and distributed tracing.
 
@@ -409,7 +406,7 @@ async def trace_mcp_calls(
     }
 
 @mcp.tool()
-async def generate_performance_reports(ctx: Context, service_name: str = None, days: int = 7) -> Dict[str, Any]:
+async def generate_performance_reports(ctx: Context, service_name: str | None = None, days: int = 7) -> dict[str, Any]:
     """
     Generate comprehensive performance reports with automated analysis.
 
@@ -480,7 +477,7 @@ async def generate_performance_reports(ctx: Context, service_name: str = None, d
         return report
 
 @mcp.tool()
-async def alert_on_anomalies(ctx: Context, service_name: str = None) -> Dict[str, Any]:
+async def alert_on_anomalies(ctx: Context, service_name: str | None = None) -> dict[str, Any]:
     """
     Monitor for performance anomalies and trigger alerts.
 
@@ -541,7 +538,7 @@ async def alert_on_anomalies(ctx: Context, service_name: str = None) -> Dict[str
         }
 
 @mcp.tool()
-async def monitor_system_resources(ctx: Context) -> Dict[str, Any]:
+async def monitor_system_resources(ctx: Context) -> dict[str, Any]:
     """
     Monitor system-wide resources and provide real-time status.
 
@@ -642,7 +639,7 @@ async def monitor_system_resources(ctx: Context) -> Dict[str, Any]:
         }
 
 @mcp.tool()
-async def analyze_mcp_interactions(ctx: Context, days: int = 7) -> Dict[str, Any]:
+async def analyze_mcp_interactions(ctx: Context, days: int = 7) -> dict[str, Any]:
     """
     Analyze patterns in MCP server interactions and usage.
 
@@ -716,7 +713,7 @@ async def analyze_mcp_interactions(ctx: Context, days: int = 7) -> Dict[str, Any
         }
 
 @mcp.tool()
-async def export_metrics(ctx: Context, format: str = "prometheus", include_history: bool = False) -> Dict[str, Any]:
+async def export_metrics(ctx: Context, format: str = "prometheus", include_history: bool = False) -> dict[str, Any]:
     """
     Export collected metrics in various formats for external monitoring systems.
 
@@ -774,7 +771,7 @@ async def export_metrics(ctx: Context, format: str = "prometheus", include_histo
             return {"error": f"Unsupported format: {format}. Supported: prometheus, opentelemetry, json"}
 
 # Helper functions
-def _generate_health_recommendations(result: HealthCheckResult) -> List[str]:
+def _generate_health_recommendations(result: HealthCheckResult) -> list[str]:
     """Generate health check recommendations."""
     recommendations = []
 
@@ -789,7 +786,7 @@ def _generate_health_recommendations(result: HealthCheckResult) -> List[str]:
 
     return recommendations
 
-def _analyze_performance_trends(history: List[Dict]) -> Dict[str, Any]:
+def _analyze_performance_trends(history: list[dict]) -> dict[str, Any]:
     """Analyze performance trends from historical data."""
     if len(history) < 2:
         return {"insufficient_data": True}
@@ -805,12 +802,12 @@ def _analyze_performance_trends(history: List[Dict]) -> Dict[str, Any]:
         "avg_memory_mb": memory_avg,
     }
 
-def _check_performance_alerts(ctx: Context, metrics: PerformanceMetrics) -> List[Dict]:
+def _check_performance_alerts(ctx: Context, metrics: PerformanceMetrics) -> list[dict]:
     """Check for performance alerts."""
     # Placeholder - would implement actual alert checking
     return []
 
-def _generate_performance_recommendations(metrics: PerformanceMetrics, trends: Dict) -> List[str]:
+def _generate_performance_recommendations(metrics: PerformanceMetrics, trends: dict) -> list[str]:
     """Generate performance recommendations."""
     recommendations = []
 
@@ -825,7 +822,7 @@ def _generate_performance_recommendations(metrics: PerformanceMetrics, trends: D
 
     return recommendations
 
-def _analyze_trace_patterns(history: List[Dict]) -> Dict[str, Any]:
+def _analyze_trace_patterns(history: list[dict]) -> dict[str, Any]:
     """Analyze trace patterns."""
     if not history:
         return {}
@@ -840,7 +837,7 @@ def _analyze_trace_patterns(history: List[Dict]) -> Dict[str, Any]:
         "total_operations": len(operations),
     }
 
-def _generate_trace_insights(trace: TraceInfo, patterns: Dict) -> List[str]:
+def _generate_trace_insights(trace: TraceInfo, patterns: dict) -> list[str]:
     """Generate insights from trace data."""
     insights = []
 
@@ -853,7 +850,7 @@ def _generate_trace_insights(trace: TraceInfo, patterns: Dict) -> List[str]:
 
     return insights
 
-def _generate_performance_summary(history: Any, service_name: str = None) -> Dict[str, Any]:
+def _generate_performance_summary(history: Any, service_name: str | None = None) -> dict[str, Any]:
     """Generate performance summary."""
     if isinstance(history, list):
         # Single service
@@ -872,31 +869,31 @@ def _generate_performance_summary(history: Any, service_name: str = None) -> Dic
             summary[svc] = _generate_performance_summary(data, svc)
         return summary
 
-def _analyze_performance_trends_detailed(history: Any, service_name: str = None) -> Dict[str, Any]:
+def _analyze_performance_trends_detailed(history: Any, service_name: str | None = None) -> dict[str, Any]:
     """Detailed trend analysis."""
     return {"detailed_analysis": "Implemented in full version"}
 
-def _detect_performance_anomalies(ctx: Context, history: Any, service_name: str = None) -> List[Dict]:
+def _detect_performance_anomalies(ctx: Context, history: Any, service_name: str | None = None) -> list[dict]:
     """Detect performance anomalies."""
     return []
 
-def _generate_performance_recommendations_from_history(history: Any, service_name: str = None) -> List[str]:
+def _generate_performance_recommendations_from_history(history: Any, service_name: str | None = None) -> list[str]:
     """Generate recommendations from historical data."""
     return ["Monitor trends regularly", "Set up alerting for critical metrics"]
 
-async def _detect_service_anomalies(ctx: Context, service: str, history: List, configs: List[AlertConfig]) -> List[AnomalyResult]:
+async def _detect_service_anomalies(ctx: Context, service: str, history: list, configs: list[AlertConfig]) -> list[AnomalyResult]:
     """Detect anomalies for a specific service."""
     return []
 
-async def _check_active_alerts(ctx: Context, service: str, history: List, configs: List[AlertConfig]) -> List[Dict]:
+async def _check_active_alerts(ctx: Context, service: str, history: list, configs: list[AlertConfig]) -> list[dict]:
     """Check for active alerts."""
     return []
 
-def _generate_alert_recommendations(alerts: List, anomalies: List) -> List[str]:
+def _generate_alert_recommendations(alerts: list, anomalies: list) -> list[str]:
     """Generate alert recommendations."""
     return ["Review alert configurations", "Set up notification channels"]
 
-def _analyze_system_health(status: Dict) -> Dict[str, Any]:
+def _analyze_system_health(status: dict) -> dict[str, Any]:
     """Analyze system health."""
     health_score = 100
 
@@ -921,7 +918,7 @@ def _analyze_system_health(status: Dict) -> Dict[str, Any]:
         "issues": []
     }
 
-def _generate_system_recommendations(status: Dict, health: Dict) -> List[str]:
+def _generate_system_recommendations(status: dict, health: dict) -> list[str]:
     """Generate system recommendations."""
     recommendations = []
 
@@ -936,11 +933,11 @@ def _generate_system_recommendations(status: Dict, health: Dict) -> List[str]:
 
     return recommendations
 
-def _analyze_system_trends(history: List) -> Dict[str, Any]:
+def _analyze_system_trends(history: list) -> dict[str, Any]:
     """Analyze system trends."""
     return {"trend_analysis": "Implemented in full version"}
 
-def _find_peak_usage_hours(traces: List) -> List[int]:
+def _find_peak_usage_hours(traces: list) -> list[int]:
     """Find peak usage hours."""
     hours = {}
     for trace in traces:
@@ -949,41 +946,41 @@ def _find_peak_usage_hours(traces: List) -> List[int]:
 
     return sorted(hours.keys(), key=lambda x: hours[x], reverse=True)[:3]
 
-def _find_slowest_operations(traces: List) -> List[Dict]:
+def _find_slowest_operations(traces: list) -> list[dict]:
     """Find slowest operations."""
     sorted_traces = sorted(traces, key=lambda x: x.get("duration_ms", 0), reverse=True)
     return sorted_traces[:5]
 
-def _analyze_error_patterns(traces: List) -> Dict[str, Any]:
+def _analyze_error_patterns(traces: list) -> dict[str, Any]:
     """Analyze error patterns."""
     errors = [t for t in traces if t.get("status") != "completed"]
     return {"total_errors": len(errors), "error_rate": len(errors) / len(traces) if traces else 0}
 
-def _identify_bottlenecks(patterns: Dict) -> List[str]:
+def _identify_bottlenecks(patterns: dict) -> list[str]:
     """Identify performance bottlenecks."""
     return ["Analysis of bottlenecks would be implemented here"]
 
-def _find_optimization_opportunities(patterns: Dict) -> List[str]:
+def _find_optimization_opportunities(patterns: dict) -> list[str]:
     """Find optimization opportunities."""
     return ["Caching opportunities", "Async optimization", "Resource pooling"]
 
-def _generate_scaling_recommendations(patterns: Dict) -> List[str]:
+def _generate_scaling_recommendations(patterns: dict) -> list[str]:
     """Generate scaling recommendations."""
     return ["Horizontal scaling for high load", "Load balancer configuration"]
 
-def _analyze_usage_trends(traces: List) -> Dict[str, Any]:
+def _analyze_usage_trends(traces: list) -> dict[str, Any]:
     """Analyze usage trends."""
     return {"trend": "increasing", "growth_rate": "5% per week"}
 
-def _generate_interaction_recommendations(patterns: Dict, insights: Dict) -> List[str]:
+def _generate_interaction_recommendations(patterns: dict, insights: dict) -> list[str]:
     """Generate interaction recommendations."""
     return ["Optimize frequently called operations", "Implement caching for hot paths"]
 
-def _collect_current_metrics() -> Dict[str, Any]:
+def _collect_current_metrics() -> dict[str, Any]:
     """Collect current metrics."""
     return {"current_metrics": "Would be collected from OpenTelemetry"}
 
-def _collect_recent_traces(ctx: Context) -> List[Dict]:
+def _collect_recent_traces(ctx: Context) -> list[dict]:
     """Collect recent traces."""
     return []
 

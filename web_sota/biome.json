@@ -6,7 +6,8 @@
     "useIgnoreFile": true
   },
   "files": {
-    "ignoreUnknown": false
+    "ignoreUnknown": false,
+    "ignore": ["tsconfig*.json", "**/*.bak", "**/*_2026*.tsx"]
   },
   "formatter": {
     "enabled": true,

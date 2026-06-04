@@ -1,12 +1,19 @@
+# observability-mcp app only — PLG data plane is mcp-central-docs/monitoring (12000–12006).
+# Do not run the legacy bundled Grafana/Prometheus/Loki stack on 3000/9091/3100.
+
 version: '3.8'
 
 services:
   observability-mcp:
     build: .
     ports:
-      - "9090:9090"  # Prometheus metrics
+      - "12009:12009"  # Process Prometheus /metrics (PROMETHEUS_PORT)
     environment:
-      - PROMETHEUS_PORT=9090
+      - PROMETHEUS_PORT=12009
+      - MCP_PORT=12007
+      - GRAFANA_URL=http://host.docker.internal:12000
+      - LOKI_URL=http://host.docker.internal:12002
+      - PROMETHEUS_SERVER_URL=http://host.docker.internal:12001
       - OTEL_SERVICE_NAME=observability-mcp
       - METRICS_RETENTION_DAYS=30
       - MCP_DATA_DIR=/app/data
@@ -14,89 +21,14 @@ services:
       - observability_data:/app/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9090/metrics"]
+      test: ["CMD", "curl", "-f", "http://localhost:12009/metrics"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
-    networks:
-      - observability
-
-  prometheus:
-    image: prom/prometheus:latest
-    ports:
-      - "9091:9090"
-    volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=200h'
-      - '--web.enable-lifecycle'
-    restart: unless-stopped
-    networks:
-      - observability
-
-  grafana:
-    image: grafana/grafana:latest
-    ports:
-      - "3000:3000"
-    environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin123
-      - GF_USERS_ALLOW_SIGN_UP=false
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
-    restart: unless-stopped
-    networks:
-      - observability
-    depends_on:
-      - prometheus
-
-  loki:
-    image: grafana/loki:latest
-    ports:
-      - "3100:3100"
-    volumes:
-      - ./monitoring/loki-config.yml:/etc/loki/local-config.yaml:ro
-      - loki_data:/loki
-    command: -config.file=/etc/loki/local-config.yaml
-    restart: unless-stopped
-    networks:
-      - observability
-
-  promtail:
-    image: grafana/promtail:latest
-    volumes:
-      - ./monitoring/promtail-config.yml:/etc/promtail/config.yml:ro
-      - /var/log:/var/log:ro
-    command: -config.file=/etc/promtail/config.yml
-    restart: unless-stopped
-    networks:
-      - observability
-    depends_on:
-      - loki
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
   observability_data:
     driver: local
-  prometheus_data:
-    driver: local
-  grafana_data:
-    driver: local
-  loki_data:
-    driver: local
-
-networks:
-  observability:
-    driver: bridge
-
-
-
-
-

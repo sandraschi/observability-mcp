@@ -1,6 +1,6 @@
 {
   "name": "observability-mcp",
-  "version": "0.1.0",
+  "version": "0.3.0b1",
   "description": "Production-grade observability server for monitoring MCP ecosystems with OpenTelemetry, Prometheus, and Loki.",
   "author": "Sandra Schipal",
   "repository": "https://github.com/sandraschi/observability-mcp",

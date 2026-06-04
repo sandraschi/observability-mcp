@@ -1,46 +1,46 @@
-name: CI/CD Pipeline
+name: CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   pull_request:
-    branches: [ main, master ]
 
 jobs:
-  test:
+  python:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
-        
-    - name: Install uv
-      run: curl -LsSf https://astral.sh/uv/install.sh | sh
-      
-    - name: Install dependencies
-      run: uv sync --all-extras
-      
-    - name: Lint with ruff
-      run: uv run ruff check .
-      
-    - name: Test with pytest
-      run: uv run pytest
-      
-  build-check:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync with test extras
+        run: uv sync --extra test
+
+      - name: Ruff check
+        run: uv run ruff check src tests
+
+      - name: Ruff format
+        run: uv run ruff format --check src tests
+
+      - name: Pytest
+        run: uv run pytest
+
+      - name: MCPB pack
+        run: uv run python build_mcpb.py
+
+  web:
     runs-on: ubuntu-latest
-    needs: test
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-      
-    - name: Build Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        push: false
-        tags: observability-mcp:latest
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install and build web_sota
+        working-directory: web_sota
+        run: |
+          npm ci
+          npm run build

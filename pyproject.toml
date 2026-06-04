@@ -1,11 +1,11 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "observability-mcp"
-version = "0.1.0"
-description = "FastMCP 3.1.0-powered observability server for monitoring MCP ecosystems with OpenTelemetry integration"
+version = "0.3.0b1"
+description = "FastMCP 3.3+ observability control plane for fleet Grafana, Prometheus, and Loki"
 authors = [
     {name = "Sandra Schipal", email = "sandra@example.com"}
 ]
@@ -23,11 +23,10 @@ classifiers = [
     "Topic :: System :: Monitoring",
     "Topic :: System :: Logging",
     "Topic :: Software Development :: Libraries :: Python Modules",
-    "Framework :: FastMCP",
 ]
 
 dependencies = [
-    "fastmcp>=3.1.0,<4",
+    "fastmcp>=3.3,<4",
     "opentelemetry-distro>=0.50b0",
     "opentelemetry-instrumentation>=0.50b0",
     "opentelemetry-exporter-prometheus>=0.50b0",
@@ -45,17 +44,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=8.3.0",
-    "pytest-asyncio>=0.23.0",
-    "pytest-cov>=5.0.0",
-    "black>=24.0.0",
-    "ruff>=0.6.0",
-    "mypy>=1.11.0",
-    "pre-commit>=3.6.0",
-    "fakeredis>=2.32.1",
-    "pytest-mock>=3.12.0",
-]
+test = ["pytest>=8.0", "pytest-asyncio", "pytest-cov>=4.0", "httpx"]
+dev = ["ruff>=0.9.0", "mypy"]
 
 [project.urls]
 Homepage = "https://github.com/sandraschi/observability-mcp"
@@ -67,8 +57,8 @@ Changelog = "https://github.com/sandraschi/observability-mcp/blob/main/CHANGELOG
 [project.scripts]
 observability-mcp = "observability_mcp.cli:main"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.hatch.build.targets.wheel]
+packages = ["src/observability_mcp"]
 
 [tool.black]
 line-length = 100
@@ -93,6 +83,13 @@ addopts = [
 [tool.ruff]
 line-length = 120
 target-version = "py312"
+extend-exclude = [
+    "src/observability_mcp/server_*.py",
+    "src/observability_mcp/server_*.py.bak",
+    "src/observability_mcp/server.bak",
+    "src/observability_mcp/server_initial*.py",
+    "src/observability_mcp/server_recovered*.py",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "S", "UP", "RUF"]

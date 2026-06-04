@@ -1,0 +1,25 @@
+# observability-mcp
+
+> FastMCP 3.3+ control plane for unified fleet monitoring (Grafana 12000, Prometheus 12001, Loki 12002).
+
+## What it is
+
+- MCP HTTP: 12007 (`/mcp`)
+- Web chart picker: 12008 (`/grafana`)
+- Process metrics: 12009 (`/metrics`)
+- Does NOT run a second PLG stack — use mcp-central-docs/monitoring
+
+## Key tools
+
+check_stack_status, manage_grafana_dashboards, manage_grafana_datasources, query_loki_logs, monitor_server_health, show_status_dashboard, provision_standard_dashboards
+
+## Docs
+
+- docs/PRD.md
+- docs/FASTMCP_STATUS.md
+- CHANGELOG.md
+- .env.unified-monitoring.example
+
+## Start
+
+web_sota/start.ps1 — requires unified monitoring at 12000-12002

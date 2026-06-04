@@ -1,4 +1,4 @@
-# Observability MCP Server - FastMCP 2.14.1 with OpenTelemetry
+# Observability MCP Server - FastMCP 3.3+ with OpenTelemetry
 FROM python:3.11-slim
 
 # Set environment variables
@@ -32,18 +32,18 @@ RUN mkdir -p /app/data && chmod 755 /app/data
 ENV MCP_DATA_DIR=/app/data
 
 # Expose Prometheus metrics port
-EXPOSE 9090
+EXPOSE 12009
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:9090/metrics || exit 1
+    CMD curl -f http://localhost:12009/metrics || exit 1
 
 # Default command
 CMD ["python", "-m", "observability_mcp.server"]
 
 # Labels for metadata
 LABEL org.opencontainers.image.title="Observability MCP Server" \
-      org.opencontainers.image.description="FastMCP 2.14.1-powered observability server for MCP ecosystems" \
+      org.opencontainers.image.description="FastMCP 3.3+ observability control plane for MCP fleet monitoring" \
       org.opencontainers.image.version="0.1.0" \
       org.opencontainers.image.authors="Sandra Schipal" \
       org.opencontainers.image.source="https://github.com/sandraschi/observability-mcp" \

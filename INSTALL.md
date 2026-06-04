@@ -1,5 +1,9 @@
 # Installation
 
+**Docs:** [PRD](docs/PRD.md) · [Changelog](CHANGELOG.md) · [FastMCP 3.3 status](docs/FASTMCP_STATUS.md)
+
+**Prerequisite:** Unified monitoring stack (Grafana **12000**) — `mcp-central-docs/monitoring/start-unified-monitoring.ps1`. Copy `.env.unified-monitoring.example` → `.env`.
+
 ## 🚀 Quick Start (recommended)
 
 ```powershell
@@ -18,9 +22,10 @@ just
 The interactive recipe dashboard opens in your browser. From there:
 
 ```powershell
-just bootstrap   # install all dependencies
-just serve       # start the server
-just web         # start the frontend (if applicable)
+just install     # sync Python + web_sota deps
+just start       # backend :12007 + Vite :12008 (opens browser)
+just serve       # backend only
+just web         # Vite frontend only
 ```
 
 > **Why not `pip install`?** MCP servers bundle webapps, configs, project scaffolding, and tooling that a flat Python package can't deliver. PyPI offers no safety advantage — it doesn't audit packages either. `just` gives you the complete, ready-to-run stack.
@@ -47,9 +52,18 @@ If you prefer not to use `just`:
    uv run python -m observability_mcp.server
 
    # HTTP mode (for web dashboard)
-   uv run uvicorn observability_mcp.server:app --port 10902
+   just serve
+   # or: uv run uvicorn observability_mcp.server:app --host 127.0.0.1 --port 12007
    ```
-5. Open `http://localhost:10902` or the frontend URL.
+5. Open `http://127.0.0.1:12008/grafana` (Charts picker) or MCP at `http://127.0.0.1:12007/mcp`.
+
+## Lint
+
+```powershell
+py -3 -m ruff check src/observability_mcp
+Set-Location web_sota
+npm run biome:ci
+```
 
 ---
 

@@ -1,6 +1,14 @@
+import {
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  HeartPulse,
+  Loader2,
+  XCircle,
+} from "lucide-react";
 import { useState } from "react";
 import { callTool } from "../lib/mcp-client";
-import { HeartPulse, CheckCircle2, XCircle, Clock, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 
 interface HealthResult {
   service_name: string;
@@ -19,7 +27,7 @@ interface CheckResult {
 
 // Pre-seeded with common fleet MCP ports — user can add/remove
 const FLEET_PRESETS = [
-  { label: "observability-mcp", url: "http://127.0.0.1:10902/health" },
+  { label: "observability-mcp", url: "http://127.0.0.1:12007/mcp" },
   { label: "advanced-memory", url: "http://127.0.0.1:10704/health" },
   { label: "docsops", url: "http://127.0.0.1:10794/health" },
   { label: "speechops", url: "http://127.0.0.1:10812/health" },
@@ -28,29 +36,45 @@ const FLEET_PRESETS = [
 ];
 
 function StatusIcon({ status }: { status: string }) {
-  if (status === "healthy") return <CheckCircle2 className="w-4 h-4 text-emerald-500" />;
+  if (status === "healthy")
+    return <CheckCircle2 className="w-4 h-4 text-emerald-500" />;
   return <XCircle className="w-4 h-4 text-red-500" />;
 }
 
-function HealthCard({ result, onClear }: { result: CheckResult; onClear: () => void }) {
+function HealthCard({
+  result,
+  onClear,
+}: { result: CheckResult; onClear: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const hc = result.health_check;
   const isHealthy = hc.status === "healthy";
 
   return (
-    <div className={`border rounded-xl overflow-hidden transition-colors ${
-      isHealthy ? "border-zinc-800 bg-zinc-900/50" : "border-red-900/60 bg-red-950/20"
-    }`}>
+    <div
+      className={`border rounded-xl overflow-hidden transition-colors ${
+        isHealthy
+          ? "border-zinc-800 bg-zinc-900/50"
+          : "border-red-900/60 bg-red-950/20"
+      }`}
+    >
       <div className="px-5 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <StatusIcon status={hc.status} />
           <div>
-            <div className="font-mono text-sm text-zinc-100 truncate max-w-xs">{hc.service_name}</div>
+            <div className="font-mono text-sm text-zinc-100 truncate max-w-xs">
+              {hc.service_name}
+            </div>
             <div className="text-xs font-mono text-zinc-500 flex items-center gap-2 mt-0.5">
               <Clock className="w-3 h-3" />
               {hc.response_time_ms.toFixed(1)}ms
-              {hc.details?.status_code && <span className="text-zinc-600">· HTTP {hc.details.status_code}</span>}
-              <span className="text-zinc-700">· {result.historical_checks} checks recorded</span>
+              {hc.details?.status_code && (
+                <span className="text-zinc-600">
+                  · HTTP {hc.details.status_code}
+                </span>
+              )}
+              <span className="text-zinc-700">
+                · {result.historical_checks} checks recorded
+              </span>
             </div>
           </div>
         </div>
@@ -59,7 +83,11 @@ function HealthCard({ result, onClear }: { result: CheckResult; onClear: () => v
             onClick={() => setExpanded((e) => !e)}
             className="p-1 text-zinc-600 hover:text-zinc-400 transition-colors"
           >
-            {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            {expanded ? (
+              <ChevronUp className="w-4 h-4" />
+            ) : (
+              <ChevronDown className="w-4 h-4" />
+            )}
           </button>
           <button
             onClick={onClear}
@@ -80,7 +108,10 @@ function HealthCard({ result, onClear }: { result: CheckResult; onClear: () => v
           {result.recommendations.length > 0 && (
             <div className="space-y-1">
               {result.recommendations.map((r, i) => (
-                <div key={i} className="text-xs font-mono text-amber-400/80 flex gap-2">
+                <div
+                  key={i}
+                  className="text-xs font-mono text-amber-400/80 flex gap-2"
+                >
                   <span className="text-zinc-600">→</span> {r}
                 </div>
               ))}
@@ -100,7 +131,9 @@ export function HealthMonitor() {
   const [timeout, setTimeout_] = useState(5);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [results, setResults] = useState<Array<{ id: number; data: CheckResult }>>([]);
+  const [results, setResults] = useState<
+    Array<{ id: number; data: CheckResult }>
+  >([]);
   const [scanning, setScanning] = useState(false);
 
   async function check(targetUrl: string) {
@@ -108,10 +141,10 @@ export function HealthMonitor() {
     setLoading(true);
     setError(null);
     try {
-      const result = await callTool("monitor_server_health", {
+      const result = (await callTool("monitor_server_health", {
         service_url: targetUrl.trim(),
         timeout_seconds: timeout,
-      }) as CheckResult;
+      })) as CheckResult;
       setResults((r) => [{ id: Date.now(), data: result }, ...r]);
       setUrl("");
     } catch (e) {
@@ -125,12 +158,17 @@ export function HealthMonitor() {
     setScanning(true);
     for (const preset of FLEET_PRESETS) {
       try {
-        const result = await callTool("monitor_server_health", {
+        const result = (await callTool("monitor_server_health", {
           service_url: preset.url,
           timeout_seconds: 3,
-        }) as CheckResult;
-        setResults((r) => [{ id: Date.now() + Math.random(), data: result }, ...r]);
-      } catch { /* individual failures collected in result */ }
+        })) as CheckResult;
+        setResults((r) => [
+          { id: Date.now() + Math.random(), data: result },
+          ...r,
+        ]);
+      } catch {
+        /* individual failures collected in result */
+      }
       await new Promise((res) => globalThis.setTimeout(res, 200));
     }
     setScanning(false);
@@ -139,8 +177,12 @@ export function HealthMonitor() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold font-mono text-zinc-100">Health Monitor</h1>
-        <p className="text-zinc-500 font-mono text-sm mt-1">check any HTTP service endpoint</p>
+        <h1 className="text-2xl font-bold font-mono text-zinc-100">
+          Health Monitor
+        </h1>
+        <p className="text-zinc-500 font-mono text-sm mt-1">
+          check any HTTP service endpoint
+        </p>
       </div>
 
       {/* Input */}
@@ -158,7 +200,8 @@ export function HealthMonitor() {
             type="number"
             value={timeout}
             onChange={(e) => setTimeout_(Number(e.target.value))}
-            min={1} max={30}
+            min={1}
+            max={30}
             className="w-20 bg-zinc-800/60 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm font-mono text-zinc-100 focus:outline-none focus:border-amber-500/50 transition-colors text-center"
             title="Timeout (seconds)"
           />

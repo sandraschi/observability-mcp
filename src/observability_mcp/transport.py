@@ -1,5 +1,5 @@
 """
-FastMCP 2.14.4+ Dual Transport Configuration
+FastMCP 3.3+ Dual Transport Configuration
 
 Standard module for all MCP servers in d:/Dev/repos.
 Provides unified transport configuration for STDIO, HTTP Streamable, and legacy SSE modes.
@@ -7,7 +7,7 @@ Provides unified transport configuration for STDIO, HTTP Streamable, and legacy 
 Environment Variables:
     MCP_TRANSPORT: Transport mode (stdio, http, sse). Default: stdio
     MCP_HOST: Bind address for HTTP/SSE. Default: 127.0.0.1
-    MCP_PORT: Port for HTTP/SSE. Default: 10902 (fleet 10700+; set MCP_PORT to override)
+    MCP_PORT: Port for HTTP/SSE. Default: 12007 (unified 12000 band; set MCP_PORT to override)
     MCP_PATH: HTTP endpoint path. Default: /mcp
 
 CLI Arguments:
@@ -32,7 +32,7 @@ import argparse
 import asyncio
 import logging
 import os
-from typing import Literal, Optional
+from typing import Literal
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ TransportType = Literal["stdio", "http", "sse"]
 # Environment variable standards
 ENV_TRANSPORT = "MCP_TRANSPORT"  # stdio | http | sse
 ENV_HOST = "MCP_HOST"  # default: 127.0.0.1
-ENV_PORT = "MCP_PORT"  # default: 10902
+ENV_PORT = "MCP_PORT"  # default: 12007
 ENV_PATH = "MCP_PATH"  # default: /mcp (HTTP only)
 
 
@@ -55,7 +55,7 @@ def get_transport_config() -> dict:
     return {
         "transport": os.getenv(ENV_TRANSPORT, "stdio").lower(),
         "host": os.getenv(ENV_HOST, "127.0.0.1"),
-        "port": int(os.getenv(ENV_PORT, "10902")),
+        "port": int(os.getenv(ENV_PORT, "12007")),
         "path": os.getenv(ENV_PATH, "/mcp"),
     }
 
@@ -71,13 +71,13 @@ def create_argument_parser(server_name: str) -> argparse.ArgumentParser:
         Configured ArgumentParser instance.
     """
     parser = argparse.ArgumentParser(
-        description=f"{server_name} - FastMCP 2.14.4+ Server",
+        description=f"{server_name} - FastMCP 3.3+ Server",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=f"""
 Environment Variables:
   {ENV_TRANSPORT}    Transport mode: stdio, http, sse (default: stdio)
   {ENV_HOST}         Bind address (default: 127.0.0.1)
-  {ENV_PORT}         Port number (default: 10902)
+  {ENV_PORT}         Port number (default: 12007)
   {ENV_PATH}         HTTP endpoint path (default: /mcp)
 
 Examples:
@@ -85,10 +85,10 @@ Examples:
   python -m {server_name.replace("-", "_")} --stdio
 
   # HTTP mode (web apps)
-  python -m {server_name.replace("-", "_")} --http --port 10902
+  python -m {server_name.replace("-", "_")} --http --port 12007
 
   # Via environment
-  MCP_TRANSPORT=http MCP_PORT=10902 python -m {server_name.replace("-", "_")}
+  MCP_TRANSPORT=http MCP_PORT=12007 python -m {server_name.replace("-", "_")}
 """,
     )
 
@@ -97,7 +97,7 @@ Examples:
         "--stdio", action="store_true", help="Run in STDIO (JSON-RPC) mode (default)"
     )
     transport_group.add_argument(
-        "--http", action="store_true", help="Run in HTTP Streamable mode (FastMCP 2.14.4+)"
+        "--http", action="store_true", help="Run in HTTP Streamable mode (FastMCP 3.3+)"
     )
     transport_group.add_argument(
         "--sse", action="store_true", help="Run in SSE mode (deprecated, use --http)"
@@ -107,7 +107,7 @@ Examples:
         "--host", default=None, help=f"Host to bind to (default: ${ENV_HOST} or 127.0.0.1)"
     )
     parser.add_argument(
-        "--port", type=int, default=None, help=f"Port to listen on (default: ${ENV_PORT} or 10902)"
+        "--port", type=int, default=None, help=f"Port to listen on (default: ${ENV_PORT} or 12007)"
     )
     parser.add_argument(
         "--path", default=None, help=f"HTTP endpoint path (default: ${ENV_PATH} or /mcp)"
@@ -178,7 +178,7 @@ def resolve_config(args: argparse.Namespace) -> dict:
 
 
 def run_server(
-    mcp_app, args: Optional[argparse.Namespace] = None, server_name: str = "mcp-server"
+    mcp_app, args: argparse.Namespace | None = None, server_name: str = "mcp-server"
 ) -> None:
     """
     Unified server runner for all transport modes.
@@ -199,7 +199,7 @@ def run_server(
 
 
 async def run_server_async(
-    mcp_app, args: Optional[argparse.Namespace] = None, server_name: str = "mcp-server"
+    mcp_app, args: argparse.Namespace | None = None, server_name: str = "mcp-server"
 ) -> None:
     """
     Asynchronous unified server runner for all transport modes.
@@ -230,12 +230,19 @@ async def run_server_async(
             await mcp_app.run_stdio_async()
 
         elif transport == "http":
+            import uvicorn
+
+            from observability_mcp.server import app as composite_app
+
             host = config["host"]
             port = config["port"]
-            path = config["path"]
-            endpoint = f"http://{host}:{port}{path}"
-            logger.info(f"Running in HTTP Streamable mode: {endpoint}")
-            await mcp_app.run_http_async(host=host, port=port, path=path)
+            logger.info(
+                f"Running composite ASGI on http://{host}:{port} "
+                f"(MCP {config['path']}, REST /api, docs /docs)"
+            )
+            uv_config = uvicorn.Config(composite_app, host=host, port=port, log_level="info")
+            server = uvicorn.Server(uv_config)
+            await server.serve()
 
         elif transport == "sse":
             host = config["host"]
@@ -253,15 +260,15 @@ async def run_server_async(
 
 # Export public API
 __all__ = [
-    "TransportType",
-    "ENV_TRANSPORT",
     "ENV_HOST",
-    "ENV_PORT",
     "ENV_PATH",
-    "get_transport_config",
+    "ENV_PORT",
+    "ENV_TRANSPORT",
+    "TransportType",
     "create_argument_parser",
-    "resolve_transport",
+    "get_transport_config",
     "resolve_config",
+    "resolve_transport",
     "run_server",
     "run_server_async",
 ]

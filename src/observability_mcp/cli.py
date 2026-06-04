@@ -4,7 +4,6 @@ CLI interface for the Observability MCP Server.
 Provides command-line tools for managing and interacting with the observability server.
 """
 
-import asyncio
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -23,9 +22,9 @@ def run(ctx: typer.Context):
 def health():
     """Check server health and status."""
     console.print("[green]✓ Observability MCP Server[/green]")
-    console.print("Version: 0.1.0")
+    console.print("Version: 0.2.0")
     console.print("Status: Ready to monitor MCP ecosystems")
-    console.print("FastMCP: 2.14.1+ with OpenTelemetry integration")
+    console.print("FastMCP: 3.3+ with OpenTelemetry integration")
 
 @app.command()
 def metrics():
@@ -36,7 +35,7 @@ def metrics():
     table.add_column("Description")
 
     table.add_row("OpenTelemetry", "✓ Active", "Distributed tracing and metrics")
-    table.add_row("Prometheus", "✓ Active", "Metrics export on port 9090")
+    table.add_row("Prometheus", "✓ Active", "Metrics export on port 12009")
     table.add_row("Health Checks", "✓ Enabled", "Real-time service monitoring")
     table.add_row("Performance Tracking", "✓ Enabled", "CPU, memory, disk metrics")
     table.add_row("Persistent Storage", "✓ Enabled", "Historical data retention")
@@ -49,7 +48,7 @@ def docs():
     console.print("[bold blue]📚 Observability MCP Documentation[/bold blue]")
     console.print()
     console.print("📖 [link=https://github.com/sandraschi/observability-mcp]GitHub Repository[/link]")
-    console.print("📊 [link=http://localhost:9090]Prometheus Metrics[/link]")
+    console.print("📊 [link=http://127.0.0.1:12009/metrics]Prometheus Metrics[/link]")
     console.print("🔍 [link=https://opentelemetry.io]OpenTelemetry Documentation[/link]")
     console.print()
     console.print("[yellow]Tools Available:[/yellow]")

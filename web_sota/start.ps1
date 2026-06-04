@@ -10,8 +10,8 @@ $WindowStyle = if ($Headless) { 'Hidden' } else { 'Normal' }
 # ------------------------------
 
 # Webapp Start - Standardized SOTA (Auto-Repaired V2.5)
-$WebPort = 10901
-$BackendPort = 10902
+$WebPort = 12008
+$BackendPort = 12007
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 
 # 1. Kill any process squatting on the ports

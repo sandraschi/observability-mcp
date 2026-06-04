@@ -2,26 +2,70 @@ set windows-shell := ["pwsh.exe", "-NoLogo", "-Command"]
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
 
-# Open the interactive recipe dashboard in the browser
+# Display SOTA Industrial Dashboard (terminal help — fleet standard)
 default:
-    @pwsh.exe -NoProfile -ExecutionPolicy Bypass -File ../mcp-central-docs/scripts/just-dashboard.ps1 -Path .
+    @pwsh.exe -NoProfile -ExecutionPolicy Bypass -File ../mcp-central-docs/scripts/just-industrial-dashboard.ps1 -Path . -Title observability-mcp -Version 0.3.0b1 -Subtitle "Web http://127.0.0.1:12008 | MCP http://127.0.0.1:12007/mcp"
+
+# Open click-to-run recipe dashboard in browser (port 11030 — not 10789)
+just-ui:
+    @pwsh.exe -NoProfile -ExecutionPolicy Bypass -File ../mcp-central-docs/scripts/just-dashboard.ps1 -Path . -Port 11030
 
 # ── Quality ───────────────────────────────────────────────────────────────────
 
-# Execute Ruff SOTA v13.1 linting
+# Lint Python and web_sota (Biome)
 lint:
     Set-Location '{{justfile_directory()}}'
     uv run ruff check .
     Set-Location '{{justfile_directory()}}\web_sota'
     npx @biomejs/biome ci .
 
-# Execute Ruff SOTA v13.1 fix and formatting
+# Linting and formatting (SOTA mandatory)
+check: lint
+
+# Execute Ruff fix and Biome write
 fix:
     Set-Location '{{justfile_directory()}}'
     uv run ruff check . --fix --unsafe-fixes
     uv run ruff format .
     Set-Location '{{justfile_directory()}}\web_sota'
     npx @biomejs/biome check --write .
+
+# Automated verification (SOTA mandatory)
+test:
+    Set-Location '{{justfile_directory()}}'
+    uv run --extra test pytest tests -q
+
+# ── Development ───────────────────────────────────────────────────────────────
+
+# Install/sync dependencies
+install:
+    Set-Location '{{justfile_directory()}}'
+    uv sync --extra test --extra dev
+    Set-Location '{{justfile_directory()}}\web_sota'
+    npm install
+
+# Start backend + Vite (12007 / 12008) — opens browser when ready
+start:
+    pwsh.exe -NoProfile -ExecutionPolicy Bypass -File web_sota/start.ps1
+
+# MCP HTTP backend only (12007)
+serve:
+    Set-Location '{{justfile_directory()}}'
+    $env:PYTHONPATH = '{{justfile_directory()}}\src'
+    uv run uvicorn observability_mcp.server:app --host 127.0.0.1 --port 12007 --log-level info
+
+# Vite frontend only (12008; proxies API to 12007)
+web:
+    Set-Location '{{justfile_directory()}}\web_sota'
+    npm run dev -- --port 12008 --host
+
+# Alias: full stack via start.ps1
+dev: start
+
+# Stdio MCP (IDE clients)
+stdio:
+    Set-Location '{{justfile_directory()}}'
+    uv run observability-mcp
 
 # ── Hardening ─────────────────────────────────────────────────────────────────
 
@@ -35,7 +79,7 @@ audit-deps:
     Set-Location '{{justfile_directory()}}'
     uv run safety check
 
-# Perform the "Triple Kill" and restart Docker Desktop (Standard Recovery Protocol)
+# Perform the Docker Triple Kill and restart Docker Desktop
 docker-reset:
     @Write-Host " [System] Initiating Docker Triple Kill Protocol..." -ForegroundColor Yellow
     -taskkill /F /IM "Docker Desktop.exe" /T
@@ -44,32 +88,18 @@ docker-reset:
     @Write-Host " [System] Processes terminated. Restarting Docker Desktop..." -ForegroundColor Cyan
     Start-Process "C:\Program Files\Docker\Docker\Docker Desktop.exe"
 
-# Check Docker and monitoring stack status
+# Check Docker and unified monitoring stack
 docker-status:
     @Write-Host " [System] Probing Docker infrastructure..." -ForegroundColor Cyan
     docker version
-    docker-compose ps
-
-# ── Development ───────────────────────────────────────────────────────────────
-
-# Run the MCP server in development mode
-server:
-    uv run observability-mcp
-
-# Run the Web SOTA dashboard
-web:
-    Set-Location '{{justfile_directory()}}\web_sota'
-    npm run dev
-
-# Run both server and web dashboard (requires multiple terminals or backgrounding)
-dev:
-    Write-Host "Tip: Use separate terminals for 'just server' and 'just web'" -ForegroundColor Yellow
-    just server
+    Set-Location '{{justfile_directory()}}\..\mcp-central-docs\monitoring'
+    docker compose -f docker-compose.unified-monitoring.yml ps
 
 # ── Deployment ────────────────────────────────────────────────────────────────
 
-# Build the project for production
+# Build Python wheel and web_sota production bundle (SOTA mandatory)
 build:
+    Set-Location '{{justfile_directory()}}'
     uv build
     Set-Location '{{justfile_directory()}}\web_sota'
     npm run build

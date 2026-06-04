@@ -1,11 +1,16 @@
+import asyncio
+import json
+import logging
 import os
 import re
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from logging.handlers import RotatingFileHandler
+from typing import Any
 from urllib.parse import urlparse
 
+import aiohttp
 import psutil
 import structlog
 from fastmcp import Context, FastMCP
@@ -14,16 +19,33 @@ from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+from prefab_ui.components import H3, Badge, Card, Container, Grid, Text
 from prometheus_client import start_http_server
 from pydantic import BaseModel, Field, field_validator
-import aiohttp
-import logging
-import json
-import asyncio
-import subprocess
-from logging.handlers import RotatingFileHandler
+
+from .clients import (
+    check_service_connectivity,
+    grafana_client,
+    loki_client,
+)
+from .models_storage import (
+    AlertConfig,
+    AnomalyResult,
+    HealthCheckResult,
+    InputValidator,
+    JsonFileStorage,
+    PerformanceMetrics,
+    RateLimiter,
+    ReportSummary,
+    TraceInfo,
+    _server_state,
+    check_docker_status,
+    input_validator,
+    rate_limiter,
+    storage,
+)
+from .otel_compat import use_span
 from .transport import run_server
-from prefab_ui.components import Card, Text, Badge, Grid, Container, H3, Button, Alert
 
 # Configure structured logging for industrial use
 log_file = os.getenv("LOG_FILE", "observability-mcp.log")
@@ -51,157 +73,6 @@ structlog.configure(
     cache_logger_on_first_use=True,
 )
 logger = structlog.get_logger("observability-mcp")
-
-# Loki client for log aggregation
-class LokiClient:
-    """Client for sending logs to Loki."""
-
-    def __init__(self, loki_url: str = "http://localhost:3100"):
-        self.loki_url = loki_url.rstrip('/')
-        self.session: Optional[aiohttp.ClientSession] = None
-
-    async def __aenter__(self):
-        self.session = aiohttp.ClientSession()
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if self.session:
-            await self.session.close()
-
-    async def send_log(self, labels: Dict[str, str], log_line: str, timestamp_ns: Optional[int] = None):
-        """Send a log entry to Loki."""
-        if not self.session:
-            return
-
-        if timestamp_ns is None:
-            timestamp_ns = int(time.time() * 1e9)
-
-        payload = {
-            "streams": [{
-                "stream": labels,
-                "values": [[str(timestamp_ns), log_line]]
-            }]
-        }
-
-        try:
-            async with self.session.post(f"{self.loki_url}/loki/api/v1/push", json=payload) as response:
-                if response.status != 204:
-                    logger.warning("Failed to send log to Loki", status=response.status)
-        except Exception as e:
-            logger.error("Error sending log to Loki", error=str(e))
-
-    async def query_logs(self, query: str, start: Optional[str] = None, end: Optional[str] = None, limit: int = 100) -> Dict[str, Any]:
-        """Query logs from Loki."""
-        if not self.session:
-            return {"error": "No session available"}
-
-        params = {
-            "query": query,
-            "limit": str(limit)
-        }
-
-        if start:
-            params["start"] = start
-        if end:
-            params["end"] = end
-
-        try:
-            async with self.session.get(f"{self.loki_url}/loki/api/v1/query_range", params=params) as response:
-                if response.status == 200:
-                    return await response.json()
-                else:
-                    return {"error": f"Query failed with status {response.status}"}
-        except Exception as e:
-            logger.error("Error querying Loki", error=str(e))
-            return {"error": str(e)}
-
-class GrafanaClient:
-    """Client for interacting with Grafana API."""
-
-    def __init__(self, url: str = "http://localhost:3000", auth_user: str = "admin", auth_pass: str = "admin123"):
-        self.url = url.rstrip('/')
-        self.auth = aiohttp.BasicAuth(auth_user, auth_pass)
-        self.session: Optional[aiohttp.ClientSession] = None
-
-    async def __aenter__(self):
-        self.session = aiohttp.ClientSession(auth=self.auth)
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if self.session:
-            await self.session.close()
-
-    async def list_dashboards(self) -> List[Dict[str, Any]]:
-        """List all dashboards."""
-        if not self.session: return []
-        try:
-            async with self.session.get(f"{self.url}/api/search?type=dash-db") as response:
-                if response.status == 200:
-                    return await response.json()
-                return []
-        except Exception as e:
-            logger.error("Grafana: Failed to list dashboards", error=str(e))
-            return []
-
-    async def create_dashboard(self, dashboard_json: Dict[str, Any]) -> Dict[str, Any]:
-        """Create or update a dashboard."""
-        if not self.session: return {"error": "No session"}
-        payload = {"dashboard": dashboard_json, "overwrite": True}
-        try:
-            async with self.session.post(f"{self.url}/api/dashboards/db", json=payload) as response:
-                return await response.json()
-        except Exception as e:
-            logger.error("Grafana: Failed to create dashboard", error=str(e))
-            return {"error": str(e)}
-
-    async def delete_dashboard(self, uid: str) -> bool:
-        """Delete a dashboard by UID."""
-        if not self.session: return False
-        try:
-            async with self.session.delete(f"{self.url}/api/dashboards/uid/{uid}") as response:
-                return response.status == 200
-        except Exception as e:
-            logger.error("Grafana: Failed to delete dashboard", error=str(e), uid=uid)
-            return False
-
-    async def list_datasources(self) -> List[Dict[str, Any]]:
-        """List all datasources."""
-        if not self.session: return []
-        try:
-            async with self.session.get(f"{self.url}/api/datasources") as response:
-                if response.status == 200:
-                    return await response.json()
-                return []
-        except Exception as e:
-            logger.error("Grafana: Failed to list datasources", error=str(e))
-            return []
-
-    async def add_datasource(self, ds_json: Dict[str, Any]) -> Dict[str, Any]:
-        """Add a new datasource."""
-        if not self.session: return {"error": "No session"}
-        try:
-            async with self.session.post(f"{self.url}/api/datasources", json=ds_json) as response:
-                return await response.json()
-        except Exception as e:
-            logger.error("Grafana: Failed to add datasource", error=str(e))
-            return {"error": str(e)}
-
-# Global clients
-loki_client = LokiClient(os.getenv("LOKI_URL", "http://localhost:3100"))
-grafana_client = GrafanaClient(
-    url=os.getenv("GRAFANA_URL", "http://localhost:3000"),
-    auth_user=os.getenv("GRAFANA_USER", "admin"),
-    auth_pass=os.getenv("GRAFANA_PASS", "admin123")
-)
-
-async def check_service_connectivity(url: str, timeout: float = 2.0) -> bool:
-    """Helper to check if a service is reachable."""
-    try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as session:
-            async with session.get(url) as response:
-                return response.status < 500
-    except Exception:
-        return False
 
 # OpenTelemetry Setup
 resource = Resource(attributes={"service.name": "observability-mcp"})
@@ -258,219 +129,6 @@ memory_usage_gauge = meter.create_up_down_counter(
     unit="MB"
 )
 
-# Data models
-class HealthCheckResult(BaseModel):
-    """Result of a health check operation."""
-    service_name: str
-    status: str = Field(description="Status: healthy, degraded, unhealthy")
-    response_time_ms: float
-    timestamp: datetime
-    details: Dict[str, Any] = Field(default_factory=dict)
-    error_message: Optional[str] = None
-
-class PerformanceMetrics(BaseModel):
-    """Performance metrics for a service."""
-    service_name: str
-    timestamp: datetime
-    cpu_percent: float
-    memory_mb: float
-    disk_usage_percent: float
-    network_io: Dict[str, float]
-    response_times: List[float] = Field(default_factory=list)
-    throughput: Optional[float] = None
-    error_rate: float = 0.0
-
-class TraceInfo(BaseModel):
-    """Information about a trace."""
-    trace_id: str
-    service_name: str
-    operation: str
-    start_time: datetime
-    duration_ms: float
-    status: str
-    attributes: Dict[str, Any] = Field(default_factory=dict)
-
-class AlertConfig(BaseModel):
-    """Configuration for alerts."""
-    metric_name: str
-    threshold: float
-    operator: str = Field(description="gt, lt, eq, ne")
-    severity: str = Field(description="info, warning, error, critical")
-    enabled: bool = True
-
-    @field_validator('operator')
-    @classmethod
-    def validate_operator(cls, v):
-        allowed = ['gt', 'lt', 'eq', 'ne']
-        if v not in allowed:
-            raise ValueError(f'Operator must be one of: {allowed}')
-        return v
-
-class ReportSummary(BaseModel):
-    """Summary of a performance report."""
-    period_days: int
-    generated_at: datetime
-    service_count: int
-    total_metrics: int
-    average_cpu: float
-    average_memory: float
-    anomaly_count: int
-    critical_alerts: int
-
-class RateLimiter:
-    """Simple rate limiter for tool calls."""
-
-    def __init__(self, max_calls: int = 100, window_seconds: int = 60):
-        self.max_calls = max_calls
-        self.window_seconds = window_seconds
-        self.calls: Dict[str, List[float]] = {}
-
-    def is_allowed(self, key: str) -> bool:
-        """Check if call is allowed under rate limit."""
-        now = time.time()
-        if key not in self.calls:
-            self.calls[key] = []
-
-        # Remove old calls outside the window
-        self.calls[key] = [t for t in self.calls[key] if now - t < self.window_seconds]
-
-        if len(self.calls[key]) >= self.max_calls:
-            return False
-
-        self.calls[key].append(now)
-        return True
-
-class InputValidator:
-    """Input validation utilities."""
-
-    @staticmethod
-    def validate_url(url: str) -> bool:
-        """Validate URL format and safety."""
-        try:
-            parsed = urlparse(url)
-            # Only allow http/https schemes
-            if parsed.scheme not in ['http', 'https']:
-                return False
-            # Prevent localhost/private IP access for security
-            if parsed.hostname in ['localhost', '127.0.0.1', '0.0.0.0'] or parsed.hostname.startswith('192.168.') or parsed.hostname.startswith('10.'):
-                return False
-            return True
-        except Exception:
-            return False
-
-    @staticmethod
-    def validate_service_name(name: str) -> bool:
-        """Validate service name (alphanumeric, dash, underscore only)."""
-        return bool(re.match(r'^[a-zA-Z0-9_-]+$', name) and len(name) <= 100)
-
-    @staticmethod
-    def validate_days(days: int) -> bool:
-        """Validate days parameter (reasonable range)."""
-        return 1 <= days <= 365
-
-class JsonFileStorage:
-    """Persistent JSON file storage for MCP server state."""
-    def __init__(self, file_path: str):
-        self.file_path = file_path
-        self.lock = asyncio.Lock()
-        if not os.path.exists(file_path):
-            try:
-                # Ensure directory exists
-                os.makedirs(os.path.dirname(os.path.abspath(file_path)), exist_ok=True)
-                with open(file_path, 'w') as f:
-                    json.dump({}, f)
-            except Exception as e:
-                print(f"Warning: Could not initialize storage at {file_path}: {e}")
-
-    async def get(self, key: str, default: Any = None) -> Any:
-        async with self.lock:
-            try:
-                if not os.path.exists(self.file_path):
-                    return default
-                with open(self.file_path, 'r') as f:
-                    data = json.load(f)
-                return data.get(key, default)
-            except Exception as e:
-                logger.error("Failed to read storage", error=str(e), key=key)
-                return default
-
-    async def set(self, key: str, value: Any):
-        async with self.lock:
-            try:
-                data = {}
-                if os.path.exists(self.file_path):
-                    with open(self.file_path, 'r') as f:
-                        data = json.load(f)
-                data[key] = value
-                with open(self.file_path, 'w') as f:
-                    json.dump(data, f, indent=2)
-            except Exception as e:
-                logger.error("Failed to save storage", error=str(e), key=key)
-
-# Global instances and state
-rate_limiter = RateLimiter()
-input_validator = InputValidator()
-_server_state: Dict[str, Any] = {} # In-memory volatile state fallback
-
-# Global persistent storage
-storage_path = os.getenv("MCP_STORAGE_PATH", "storage.json")
-storage = JsonFileStorage(storage_path)
-
-async def check_docker_status() -> Dict[str, Any]:
-    """
-    Check if Docker daemon is reachable.
-    Industrialized check that returns a status report.
-    """
-    try:
-        # Check daemon connectivity using 'docker version'
-        process = await asyncio.create_subprocess_exec(
-            "docker", "version", "--format", "{{.Server.Version}}",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        stdout, stderr = await process.communicate()
-        
-        if process.returncode == 0:
-            version = stdout.decode().strip()
-            return {
-                "status": "running",
-                "reachable": True,
-                "version": version,
-                "timestamp": datetime.now().isoformat()
-            }
-        else:
-            error_msg = stderr.decode().strip() or "Daemon not reachable"
-            return {
-                "status": "stopped",
-                "reachable": False,
-                "error": error_msg,
-                "timestamp": datetime.now().isoformat()
-            }
-    except FileNotFoundError:
-        return {
-            "status": "missing",
-            "reachable": False,
-            "error": "Docker CLI not found in PATH",
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        return {
-            "status": "error",
-            "reachable": False,
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        }
-
-class AnomalyResult(BaseModel):
-    """Result of anomaly detection."""
-    metric_name: str
-    detected_at: datetime
-    severity: str
-    description: str
-    current_value: float
-    threshold_value: float
-    historical_average: float
-
 @asynccontextmanager
 async def server_lifespan(mcp_instance: FastMCP):
     """Server lifespan for startup and cleanup. Hardened: never crashes on dependency failures."""
@@ -481,7 +139,7 @@ async def server_lifespan(mcp_instance: FastMCP):
     _server_state["degraded_mode"] = False
 
     # Prometheus metrics server — optional, don't crash if port is taken
-    prometheus_port = int(os.getenv("PROMETHEUS_PORT", "9090"))
+    prometheus_port = int(os.getenv("PROMETHEUS_PORT", "12009"))
     try:
         start_http_server(prometheus_port)
         logger.info("Prometheus metrics server started", port=prometheus_port)
@@ -504,7 +162,7 @@ async def server_lifespan(mcp_instance: FastMCP):
                 AlertConfig(metric_name="memory_mb", threshold=1000.0, operator="gt", severity="error"),
                 AlertConfig(metric_name="error_rate", threshold=0.05, operator="gt", severity="error"),
             ]
-            await storage.set("alert_configs", [alert.dict() for alert in default_alerts])
+            await storage.set("alert_configs", [alert.model_dump() for alert in default_alerts])
 
         logger.info("Observability MCP Server startup complete",
                     storage_path=storage.file_path,
@@ -521,8 +179,29 @@ async def server_lifespan(mcp_instance: FastMCP):
 # Initialize FastMCP server
 mcp = FastMCP(
     name="Observability-MCP",
+    version="0.3.0b1",
+    instructions=(
+        "Observability-MCP is the fleet control plane for Grafana (12000), Prometheus (12001), and Loki (12002). "
+        "Use check_stack_status first, then manage_grafana_dashboards, query_loki_logs, and monitor_server_health. "
+        "Do not start a second PLG stack on 3000/9090/3100 — use mcp-central-docs unified monitoring."
+    ),
     lifespan=server_lifespan,
+    strict_input_validation=True,
+    on_duplicate="replace",
 )
+
+from observability_mcp.prompts import register_prompts
+
+register_prompts(mcp)
+
+
+@mcp.resource("resource://observability/capabilities")
+def observability_capabilities() -> str:
+    return (
+        "Tools: stack health, Grafana dashboards/datasources, Loki query, metrics export, "
+        "fleet health checks, Prefab status dashboard. Web UI chart picker :12008. "
+        "Prompts: observability_getting_started, incident_triage."
+    )
 
 # MCP Bridge — Proxy external MCP servers via MCP_BRIDGE_URLS
 _bridge_proxies: list[str] = []
@@ -541,31 +220,38 @@ if bridge_urls:
     except ImportError:
         pass
 
-# ASGI app for uvicorn deployment (web_sota/start.ps1 runs uvicorn observability_mcp.server:app)
-app = mcp.http_app(path="/mcp")
+from observability_mcp.fleet_tool_metrics import register_mcp_tool_metrics  # noqa: E402
+from observability_mcp.sota_registration import register_sota_surface  # noqa: E402
+
+register_mcp_tool_metrics(mcp)
+register_sota_surface(mcp)
 
 @mcp.tool()
-async def check_stack_status(ctx: Context) -> Dict[str, Any]:
+async def check_stack_status(ctx: Context) -> dict[str, Any]:
     """
     Check the health and connectivity of the observability stack (Loki, Prometheus, Grafana).
 
     This diagnostic tool verifies if the underlying Docker-based services are reachable
     and correctly configured.
     """
-    loki_url = os.getenv("LOKI_URL", "http://localhost:3100")
-    prom_port = os.getenv("PROMETHEUS_PORT", "9090")
-    prom_url = f"http://localhost:{prom_port}"
-    grafana_url = "http://localhost:3000"
+    loki_url = os.getenv("LOKI_URL", "http://127.0.0.1:12002").rstrip("/")
+    prom_server_url = os.getenv("PROMETHEUS_SERVER_URL", "http://127.0.0.1:12001").rstrip("/")
+    grafana_url = os.getenv("GRAFANA_URL", "http://127.0.0.1:12000").rstrip("/")
+    prom_exporter_port = os.getenv("PROMETHEUS_PORT", "12009")
 
     loki_up = await check_service_connectivity(f"{loki_url}/ready")
-    prom_up = await check_service_connectivity(f"{prom_url}/-/healthy")
+    prom_up = await check_service_connectivity(f"{prom_server_url}/-/healthy")
     grafana_up = await check_service_connectivity(f"{grafana_url}/api/health")
 
     status = {
         "loki": {"status": "up" if loki_up else "down", "url": loki_url},
-        "prometheus": {"status": "up" if prom_up else "down", "url": prom_url},
+        "prometheus": {"status": "up" if prom_up else "down", "url": prom_server_url},
         "grafana": {"status": "up" if grafana_up else "down", "url": grafana_url},
-        "timestamp": datetime.now().isoformat()
+        "mcp_metrics_exporter": {
+            "port": prom_exporter_port,
+            "note": "Process /metrics (PROMETHEUS_PORT), not the Prometheus server URL",
+        },
+        "timestamp": datetime.now().isoformat(),
     }
 
     all_up = loki_up and prom_up and grafana_up
@@ -576,8 +262,13 @@ async def check_stack_status(ctx: Context) -> Dict[str, Any]:
         "status": status,
         "is_healthy": all_up,
         "recommendations": [
-            "Ensure Docker Desktop is running" if not all_up else "Stack is healthy",
-            "Run 'docker-compose up -d' in the project root" if not all_up else "No action required"
+            "Start unified monitoring: mcp-central-docs/monitoring/start-unified-monitoring.ps1"
+            if not all_up
+            else "Stack is healthy",
+            "Set GRAFANA_URL/LOKI_URL/PROMETHEUS_SERVER_URL (see .env.unified-monitoring.example); "
+            "Use unified PLG on 12000–12006; observability-mcp app on 12007–12009"
+            if not all_up
+            else "No action required",
         ]
     }
 
@@ -585,12 +276,12 @@ async def check_stack_status(ctx: Context) -> Dict[str, Any]:
 async def manage_alert_configs(
     ctx: Context,
     operation: str,
-    alert: Optional[Dict[str, Any]] = None,
-    metric_name: Optional[str] = None
-) -> Dict[str, Any]:
+    alert: dict[str, Any] | None = None,
+    metric_name: str | None = None
+) -> dict[str, Any]:
     """
     Manage metric alert configurations.
-    
+
     Operations:
     - list: List all current alert configurations
     - add: Add a new alert configuration (requires 'alert' dict)
@@ -599,23 +290,23 @@ async def manage_alert_configs(
     """
     if not rate_limiter.is_allowed("manage_alerts"):
         return {"error": "Rate limit exceeded"}
-        
+
     configs = await storage.get("alert_configs", [])
-    
+
     if operation == "list":
         return {"alerts": configs}
-        
+
     elif operation == "add":
         if not alert:
             return {"error": "Alert data required for 'add' operation"}
         try:
             new_alert = AlertConfig(**alert)
-            configs.append(new_alert.dict())
+            configs.append(new_alert.model_dump(mode="json"))
             await storage.set("alert_configs", configs)
-            return {"status": "added", "alert": new_alert.dict()}
+            return {"status": "added", "alert": new_alert.model_dump(mode="json")}
         except Exception as e:
             return {"error": f"Invalid alert configuration: {e}"}
-            
+
     elif operation == "remove":
         if not metric_name:
             return {"error": "Metric name required for 'remove' operation"}
@@ -624,7 +315,7 @@ async def manage_alert_configs(
             return {"error": f"Alert for metric '{metric_name}' not found"}
         await storage.set("alert_configs", new_configs)
         return {"status": "removed", "metric_name": metric_name}
-        
+
     elif operation == "toggle":
         if not metric_name:
             return {"error": "Metric name required for 'toggle' operation"}
@@ -638,7 +329,7 @@ async def manage_alert_configs(
             return {"error": f"Alert for metric '{metric_name}' not found"}
         await storage.set("alert_configs", configs)
         return {"status": "toggled", "metric_name": metric_name}
-        
+
     else:
         return {"error": f"Unknown operation: {operation}"}
 
@@ -691,10 +382,9 @@ async def show_status_dashboard(ctx: Context) -> Any:
 
     # --- Build Prefab UI ---
     degraded_banner = [
-        Alert(
-            "⚠ Degraded Mode — one or more dependencies unreachable. "
-            "Metrics and dashboard data may be incomplete.",
-            level="warning"
+        Text(
+            "Degraded mode: one or more dependencies unreachable. "
+            "Metrics and dashboard data may be incomplete."
         )
     ] if (degraded or not docker_status["reachable"]) else []
 
@@ -755,8 +445,8 @@ async def monitor_server_health(
     ctx: Context,
     service_url: str,
     timeout_seconds: float = 5.0,
-    expected_status_codes: List[int] = None
-) -> Dict[str, Any]:
+    expected_status_codes: list[int] | None = None
+) -> dict[str, Any]:
     """
     Perform real-time health check on an MCP server or web service.
 
@@ -790,7 +480,7 @@ async def monitor_server_health(
 
     start_time = time.time()
 
-    with tracer.start_as_span("health_check") as span:
+    with use_span(tracer,"health_check") as span:
         span.set_attribute("service.url", service_url)
         span.set_attribute("timeout_seconds", timeout_seconds)
 
@@ -833,20 +523,20 @@ async def monitor_server_health(
     # Store result in persistent storage (with bounds checking)
     history_key = f"health_history:{service_url}"
     history = await storage.get(history_key, [])
-    history.append(result.dict())
+    history.append(result.model_dump(mode="json"))
     # Keep only last 50 results per service to prevent unbounded growth
     history = history[-50:]
     await storage.set(history_key, history)
 
     return {
-        "health_check": result.dict(),
+        "health_check": result.model_dump(mode="json"),
         "metrics_recorded": True,
         "historical_checks": len(history),
         "recommendations": _generate_health_recommendations(result)
     }
 
 @mcp.tool()
-async def collect_performance_metrics(ctx: Context, service_name: str = "system") -> Dict[str, Any]:
+async def collect_performance_metrics(ctx: Context, service_name: str = "system") -> dict[str, Any]:
     """
     Collect comprehensive performance metrics for the system or specific service.
 
@@ -866,7 +556,7 @@ async def collect_performance_metrics(ctx: Context, service_name: str = "system"
     if not input_validator.validate_service_name(service_name):
         return {"error": "Invalid service name provided"}
 
-    with tracer.start_as_span("collect_performance_metrics") as span:
+    with use_span(tracer,"collect_performance_metrics") as span:
         span.set_attribute("service.name", service_name)
 
         # Collect system metrics
@@ -890,15 +580,15 @@ async def collect_performance_metrics(ctx: Context, service_name: str = "system"
         )
 
         # Record OpenTelemetry metrics
-        cpu_usage_gauge.set(int(cpu_percent))
-        memory_usage_gauge.set(int(metrics_data.memory_mb))
+        cpu_usage_gauge.add(int(cpu_percent), {"service": service_name})
+        memory_usage_gauge.add(int(metrics_data.memory_mb), {"service": service_name})
 
         performance_metric_counter.add(1, {"service": service_name})
 
         # Store metrics history in persistent storage (with bounds checking)
         history_key = f"performance_history:{service_name}"
         history = await storage.get(history_key, [])
-        history.append(metrics_data.dict())
+        history.append(metrics_data.model_dump(mode="json"))
         # Keep last 500 data points per service to prevent unbounded growth
         history = history[-500:]
         await storage.set(history_key, history)
@@ -910,7 +600,7 @@ async def collect_performance_metrics(ctx: Context, service_name: str = "system"
         span.set_attribute("memory_mb", metrics_data.memory_mb)
 
         return {
-            "metrics": metrics_data.dict(),
+            "metrics": metrics_data.model_dump(mode="json"),
             "trends": trends,
             "alerts": await _check_performance_alerts(ctx, metrics_data),
             "recommendations": _generate_performance_recommendations(metrics_data, trends)
@@ -922,8 +612,8 @@ async def trace_mcp_calls(
     operation_name: str,
     service_name: str,
     duration_ms: float,
-    attributes: Dict[str, Any] = None
-) -> Dict[str, Any]:
+    attributes: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """
     Record a trace for MCP call monitoring and distributed tracing.
 
@@ -942,7 +632,7 @@ async def trace_mcp_calls(
     if attributes is None:
         attributes = {}
 
-    with tracer.start_as_span(operation_name) as span:
+    with use_span(tracer,operation_name) as span:
         span.set_attribute("service.name", service_name)
         span.set_attribute("operation.duration_ms", duration_ms)
 
@@ -965,7 +655,7 @@ async def trace_mcp_calls(
     # Store trace history in persistent storage
     history_key = f"trace_history:{service_name}"
     history = await storage.get(history_key, [])
-    history.append(trace_info.dict())
+    history.append(trace_info.model_dump(mode="json"))
     # Keep last 500 traces
     history = history[-500:]
     await storage.set(history_key, history)
@@ -974,13 +664,13 @@ async def trace_mcp_calls(
     patterns = _analyze_trace_patterns(history)
 
     return {
-        "trace": trace_info.dict(),
+        "trace": trace_info.model_dump(mode="json"),
         "patterns": patterns,
         "performance_insights": _generate_trace_insights(trace_info, patterns)
     }
 
 @mcp.tool()
-async def generate_performance_reports(ctx: Context, service_name: str = None, days: int = 7) -> Dict[str, Any]:
+async def generate_performance_reports(ctx: Context, service_name: str | None = None, days: int = 7) -> dict[str, Any]:
     """
     Generate comprehensive performance reports with automated analysis.
 
@@ -997,7 +687,7 @@ async def generate_performance_reports(ctx: Context, service_name: str = None, d
     if not input_validator.validate_days(days):
         return {"error": "Days must be between 1 and 365"}
 
-    with tracer.start_as_span("generate_performance_reports") as span:
+    with use_span(tracer,"generate_performance_reports") as span:
         span.set_attribute("report.days", days)
         if service_name:
             span.set_attribute("report.service", service_name)
@@ -1047,7 +737,7 @@ async def generate_performance_reports(ctx: Context, service_name: str = None, d
         return report
 
 @mcp.tool()
-async def alert_on_anomalies(ctx: Context, service_name: str = "system") -> Dict[str, Any]:
+async def alert_on_anomalies(ctx: Context, service_name: str = "system") -> dict[str, Any]:
     """
     Monitor for performance anomalies and trigger alerts.
 
@@ -1060,7 +750,7 @@ async def alert_on_anomalies(ctx: Context, service_name: str = "system") -> Dict
     if not rate_limiter.is_allowed("alert_on_anomalies"):
         return {"error": "Rate limit exceeded"}
 
-    with tracer.start_as_span("alert_on_anomalies") as span:
+    with use_span(tracer,"alert_on_anomalies") as span:
         span.set_attribute("alert.service", service_name)
 
         # Get alert configurations
@@ -1075,7 +765,7 @@ async def alert_on_anomalies(ctx: Context, service_name: str = "system") -> Dict
 
         # Check for anomalies
         anomalies = await _detect_service_anomalies(ctx, service_name, history, alert_configs)
-        
+
         # Check active alerts
         active_alerts = await _check_active_alerts(ctx, service_name, history, alert_configs)
 
@@ -1087,13 +777,13 @@ async def alert_on_anomalies(ctx: Context, service_name: str = "system") -> Dict
 
         return {
             "active_alerts": active_alerts,
-            "detected_anomalies": [anomaly.dict() for anomaly in anomalies],
-            "alert_configs": [config.dict() for config in alert_configs],
+            "detected_anomalies": [anomaly.model_dump(mode="json") for anomaly in anomalies],
+            "alert_configs": [config.model_dump(mode="json") for config in alert_configs],
             "recommendations": _generate_alert_recommendations(active_alerts, anomalies)
         }
 
 @mcp.tool()
-async def monitor_system_resources(ctx: Context) -> Dict[str, Any]:
+async def monitor_system_resources(ctx: Context) -> dict[str, Any]:
     """
     Monitor system-wide resources and provide real-time status.
 
@@ -1103,7 +793,7 @@ async def monitor_system_resources(ctx: Context) -> Dict[str, Any]:
     if not rate_limiter.is_allowed("system_resources"):
         return {"error": "Rate limit exceeded"}
 
-    with tracer.start_as_span("monitor_system_resources") as span:
+    with use_span(tracer,"monitor_system_resources") as span:
         # System-wide metrics
         cpu_percent = psutil.cpu_percent(interval=1)
         cpu_times = psutil.cpu_times()
@@ -1193,7 +883,7 @@ async def monitor_system_resources(ctx: Context) -> Dict[str, Any]:
         }
 
 @mcp.tool()
-async def analyze_mcp_interactions(ctx: Context, days: int = 7) -> Dict[str, Any]:
+async def analyze_mcp_interactions(ctx: Context, days: int = 7) -> dict[str, Any]:
     """
     Analyze patterns in MCP server interactions and usage.
 
@@ -1209,7 +899,7 @@ async def analyze_mcp_interactions(ctx: Context, days: int = 7) -> Dict[str, Any
     if not input_validator.validate_days(days):
         return {"error": "Days must be between 1 and 365"}
 
-    with tracer.start_as_span("analyze_mcp_interactions") as span:
+    with use_span(tracer,"analyze_mcp_interactions") as span:
         span.set_attribute("analysis.days", days)
 
         cutoff_date = datetime.now() - timedelta(days=days)
@@ -1253,7 +943,7 @@ async def analyze_mcp_interactions(ctx: Context, days: int = 7) -> Dict[str, Any
         }
 
 @mcp.tool()
-async def export_metrics(ctx: Context, format: str = "prometheus", include_history: bool = False) -> Dict[str, Any]:
+async def export_metrics(ctx: Context, format: str = "prometheus", include_history: bool = False) -> dict[str, Any]:
     """
     Export collected metrics in various formats for external monitoring systems.
 
@@ -1267,14 +957,14 @@ async def export_metrics(ctx: Context, format: str = "prometheus", include_histo
     if not rate_limiter.is_allowed("export_metrics"):
         return {"error": "Rate limit exceeded"}
 
-    with tracer.start_as_span("export_metrics") as span:
+    with use_span(tracer,"export_metrics") as span:
         span.set_attribute("export.format", format)
         span.set_attribute("export.include_history", include_history)
 
         if format == "prometheus":
             return {
                 "format": "prometheus",
-                "endpoint": f"http://localhost:{os.getenv('PROMETHEUS_PORT', '9090')}/metrics",
+                "endpoint": f"http://localhost:{os.getenv('PROMETHEUS_PORT', '12009')}/metrics",
                 "message": "Metrics available at Prometheus endpoint"
             }
 
@@ -1308,8 +998,8 @@ async def send_logs_to_loki(
     ctx: Context,
     log_message: str,
     level: str = "info",
-    labels: Dict[str, str] = None
-) -> Dict[str, Any]:
+    labels: dict[str, str] | None = None
+) -> dict[str, Any]:
     """
     Send custom log entries to Loki for centralized log aggregation.
 
@@ -1349,7 +1039,7 @@ async def send_logs_to_loki(
         if not isinstance(value, str) or len(value) > 100:
             return {"error": "Invalid label value"}
 
-    with tracer.start_as_span("send_logs_to_loki") as span:
+    with use_span(tracer,"send_logs_to_loki") as span:
         span.set_attribute("log.level", level)
         span.set_attribute("log.message_length", len(log_message))
 
@@ -1386,10 +1076,10 @@ async def send_logs_to_loki(
 async def query_loki_logs(
     ctx: Context,
     query: str,
-    start_time: Optional[str] = None,
-    end_time: Optional[str] = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
     limit: int = 100
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Query logs from Loki with advanced filtering and analysis.
 
@@ -1430,7 +1120,7 @@ async def query_loki_logs(
         elif not end_time.endswith('Z'):
             end_time += 'Z'
 
-    with tracer.start_as_span("query_loki_logs") as span:
+    with use_span(tracer,"query_loki_logs") as span:
         span.set_attribute("query.length", len(query))
         span.set_attribute("query.limit", limit)
 
@@ -1473,7 +1163,7 @@ async def analyze_log_patterns(
     query: str,
     time_window: str = "1h",
     min_occurrences: int = 5
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Analyze log patterns and anomalies using Loki queries.
 
@@ -1502,7 +1192,7 @@ async def analyze_log_patterns(
     if not (1 <= min_occurrences <= 1000):
         return {"error": "Minimum occurrences must be between 1 and 1000"}
 
-    with tracer.start_as_span("analyze_log_patterns") as span:
+    with use_span(tracer,"analyze_log_patterns") as span:
         span.set_attribute("analysis.window", time_window)
         span.set_attribute("analysis.min_occurrences", min_occurrences)
 
@@ -1548,7 +1238,7 @@ async def correlate_logs_and_metrics(
     log_query: str,
     metric_query: str,
     time_window: str = "1h"
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Correlate log entries with metrics for comprehensive incident analysis.
 
@@ -1577,7 +1267,7 @@ async def correlate_logs_and_metrics(
     if time_window not in allowed_windows:
         return {"error": f"Invalid time window. Must be one of: {allowed_windows}"}
 
-    with tracer.start_as_span("correlate_logs_and_metrics") as span:
+    with use_span(tracer,"correlate_logs_and_metrics") as span:
         span.set_attribute("correlation.window", time_window)
 
         # Parse time window
@@ -1593,16 +1283,16 @@ async def correlate_logs_and_metrics(
             log_results = await loki_client.query_logs(log_query, start_time, limit=500)
 
         # Query metrics from Prometheus
-        prom_port = os.getenv("PROMETHEUS_PORT", "9090")
+        prom_port = os.getenv("PROMETHEUS_PORT", "12009")
         prom_url = f"http://localhost:{prom_port}/api/v1/query_range"
-        
+
         params = {
             "query": metric_query,
             "start": start_time,
             "end": datetime.now().isoformat() + 'Z',
             "step": "1m"
         }
-        
+
         metric_results = {"data": []}
         try:
             async with aiohttp.ClientSession() as session:
@@ -1637,12 +1327,12 @@ async def correlate_logs_and_metrics(
 async def manage_grafana_dashboards(
     ctx: Context,
     operation: str,
-    uid: Optional[str] = None,
-    dashboard_json: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
+    uid: str | None = None,
+    dashboard_json: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """
     Manage Grafana dashboards.
-    
+
     Operations:
     - list: List all dashboards
     - create: Create or update a dashboard (requires 'dashboard_json')
@@ -1656,19 +1346,19 @@ async def manage_grafana_dashboards(
         if operation == "list":
             dashboards = await grafana_client.list_dashboards()
             return {"dashboards": dashboards}
-            
+
         elif operation == "create":
             if not dashboard_json:
                 return {"error": "Dashboard JSON required"}
             result = await grafana_client.create_dashboard(dashboard_json)
             return {"status": "created/updated", "result": result}
-            
+
         elif operation == "delete":
             if not uid:
                 return {"error": "UID required"}
             success = await grafana_client.delete_dashboard(uid)
             return {"status": "deleted" if success else "failed", "uid": uid}
-            
+
         elif operation == "get":
             if not uid:
                 return {"error": "UID required"}
@@ -1683,12 +1373,12 @@ async def manage_grafana_dashboards(
 async def manage_grafana_datasources(
     ctx: Context,
     operation: str,
-    ds_id: Optional[int] = None,
-    ds_json: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
+    ds_id: int | None = None,
+    ds_json: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """
     Manage Grafana datasources.
-    
+
     Operations:
     - list: List all datasources
     - add: Add a new datasource (requires 'ds_json')
@@ -1702,19 +1392,19 @@ async def manage_grafana_datasources(
         if operation == "list":
             datasources = await grafana_client.list_datasources()
             return {"datasources": datasources}
-            
+
         elif operation == "add":
             if not ds_json:
                 return {"error": "Datasource JSON required"}
             result = await grafana_client.add_datasource(ds_json)
             return {"status": "added", "result": result}
-            
+
         elif operation == "remove":
             if not ds_id:
                 return {"error": "Datasource ID required"}
             async with grafana_client.session.delete(f"{grafana_client.url}/api/datasources/{ds_id}") as response:
                 return {"status": "removed" if response.status == 200 else "failed", "id": ds_id}
-                
+
         elif operation == "test":
             if not ds_id:
                 return {"error": "Datasource ID required"}
@@ -1724,10 +1414,10 @@ async def manage_grafana_datasources(
             return {"error": f"Unknown operation: {operation}"}
 
 @mcp.tool()
-async def provision_standard_dashboards(ctx: Context) -> Dict[str, Any]:
+async def provision_standard_dashboards(ctx: Context) -> dict[str, Any]:
     """
     Provision standard SOTA industrial dashboards to Grafana.
-    
+
     This tool sets up pre-configured dashboards for:
     1. System Health & Resource Usage
     2. MCP Trace Analytics
@@ -1737,24 +1427,27 @@ async def provision_standard_dashboards(ctx: Context) -> Dict[str, Any]:
         # First ensure Prometheus and Loki datasources exist
         current_ds = await grafana_client.list_datasources()
         ds_names = [ds["name"] for ds in current_ds]
-        
+
         results = []
-        
+
+        prom_ds_url = os.getenv("PROMETHEUS_SERVER_URL", "http://127.0.0.1:12001").rstrip("/")
+        loki_ds_url = os.getenv("LOKI_URL", "http://127.0.0.1:12002").rstrip("/")
+
         if "Prometheus" not in ds_names:
             prom_ds = {
                 "name": "Prometheus",
                 "type": "prometheus",
-                "url": "http://prometheus:9090",
+                "url": prom_ds_url,
                 "access": "proxy",
                 "isDefault": True
             }
             results.append(await grafana_client.add_datasource(prom_ds))
-            
+
         if "Loki" not in ds_names:
             loki_ds = {
                 "name": "Loki",
                 "type": "loki",
-                "url": "http://loki:3100",
+                "url": loki_ds_url,
                 "access": "proxy"
             }
             results.append(await grafana_client.add_datasource(loki_ds))
@@ -1774,11 +1467,11 @@ async def provision_standard_dashboards(ctx: Context) -> Dict[str, Any]:
             "schemaVersion": 36
         }
         results.append(await grafana_client.create_dashboard(basic_dash))
-        
+
         return {"status": "provisioning_complete", "results": results}
 
 # Helper functions
-def _generate_health_recommendations(result: HealthCheckResult) -> List[str]:
+def _generate_health_recommendations(result: HealthCheckResult) -> list[str]:
     """Generate health check recommendations."""
     recommendations = []
 
@@ -1793,7 +1486,7 @@ def _generate_health_recommendations(result: HealthCheckResult) -> List[str]:
 
     return recommendations
 
-def _analyze_performance_trends(history: List[Dict]) -> Dict[str, Any]:
+def _analyze_performance_trends(history: list[dict]) -> dict[str, Any]:
     """Analyze performance trends from historical data."""
     if len(history) < 2:
         return {"insufficient_data": True}
@@ -1809,7 +1502,7 @@ def _analyze_performance_trends(history: List[Dict]) -> Dict[str, Any]:
         "avg_memory_mb": memory_avg,
     }
 
-def _analyze_trace_patterns(history: List[Dict]) -> Dict[str, Any]:
+def _analyze_trace_patterns(history: list[dict]) -> dict[str, Any]:
     """Analyze trace patterns."""
     if not history:
         return {}
@@ -1825,7 +1518,7 @@ def _analyze_trace_patterns(history: List[Dict]) -> Dict[str, Any]:
         "unique_operations": len(operations)
     }
 
-def _generate_trace_insights(trace: TraceInfo, patterns: Dict) -> List[str]:
+def _generate_trace_insights(trace: TraceInfo, patterns: dict) -> list[str]:
     """Generate insights from trace data."""
     insights = []
 
@@ -1838,11 +1531,11 @@ def _generate_trace_insights(trace: TraceInfo, patterns: Dict) -> List[str]:
 
     return insights
 
-def _generate_performance_summary(history: List[Dict], service_name: str = None) -> Dict[str, Any]:
+def _generate_performance_summary(history: list[dict], service_name: str | None = None) -> dict[str, Any]:
     """Generate performance summary."""
     if not history:
         return {"error": "No data available"}
-        
+
     return {
         "total_measurements": len(history),
         "avg_cpu": sum(h.get("cpu_percent", 0) for h in history) / len(history),
@@ -1850,25 +1543,25 @@ def _generate_performance_summary(history: List[Dict], service_name: str = None)
         "time_range": f"{history[0]['timestamp']} to {history[-1]['timestamp']}",
     }
 
-def _analyze_performance_trends_detailed(history: List[Dict], service_name: str = None) -> Dict[str, Any]:
+def _analyze_performance_trends_detailed(history: list[dict], service_name: str | None = None) -> dict[str, Any]:
     """Detailed trend analysis."""
     # Simplified version for now
     return {"detailed_analysis": "Metric stability: High", "trend": "Stable"}
 
-async def _detect_performance_anomalies(ctx: Context, history: List[Dict], service_name: str = None) -> List[Dict]:
+async def _detect_performance_anomalies(ctx: Context, history: list[dict], service_name: str | None = None) -> list[dict]:
     """Detect performance anomalies."""
     return []
 
-def _generate_performance_recommendations_from_history(history: List[Dict], service_name: str = None) -> List[str]:
+def _generate_performance_recommendations_from_history(history: list[dict], service_name: str | None = None) -> list[str]:
     """Generate recommendations from historical data."""
     return ["Monitor trends regularly", "Set up alerting for critical metrics"]
 
-async def _detect_service_anomalies(ctx: Context, service: str, history: List, configs: List[AlertConfig]) -> List[AnomalyResult]:
+async def _detect_service_anomalies(ctx: Context, service: str, history: list, configs: list[AlertConfig]) -> list[AnomalyResult]:
     """Detect anomalies for a specific service."""
     # Simplified placeholder
     return []
 
-async def _check_active_alerts(ctx: Context, service: str, history: List, configs: List[AlertConfig]) -> List[Dict]:
+async def _check_active_alerts(ctx: Context, service: str, history: list, configs: list[AlertConfig]) -> list[dict]:
     """Check for active alerts in history."""
     if not history:
         return []
@@ -1877,14 +1570,14 @@ async def _check_active_alerts(ctx: Context, service: str, history: List, config
     perf_metrics = PerformanceMetrics(**latest)
     return await _check_performance_alerts(ctx, perf_metrics)
 
-def _generate_alert_recommendations(alerts: List, anomalies: List) -> List[str]:
+def _generate_alert_recommendations(alerts: list, anomalies: list) -> list[str]:
     """Generate alert recommendations."""
     recommendations = ["Review alert configurations"]
     if alerts:
         recommendations.append("Investigate active alerts immediately")
     return recommendations
 
-def _analyze_system_health(status: Dict) -> Dict[str, Any]:
+def _analyze_system_health(status: dict) -> dict[str, Any]:
     """Analyze system health."""
     health_score = 100
 
@@ -1907,7 +1600,7 @@ def _analyze_system_health(status: Dict) -> Dict[str, Any]:
         "issues": []
     }
 
-def _generate_system_recommendations(status: Dict, health: Dict) -> List[str]:
+def _generate_system_recommendations(status: dict, health: dict) -> list[str]:
     """Generate system recommendations."""
     recommendations = []
     if status["cpu"]["percent"] > 80:
@@ -1918,11 +1611,11 @@ def _generate_system_recommendations(status: Dict, health: Dict) -> List[str]:
         recommendations.append("Low disk space - clean up unnecessary files")
     return recommendations
 
-def _analyze_system_trends(history: List) -> Dict[str, Any]:
+def _analyze_system_trends(history: list) -> dict[str, Any]:
     """Analyze system trends."""
     return {"trend": "Stable"}
 
-def _find_peak_usage_hours(traces: List) -> List[int]:
+def _find_peak_usage_hours(traces: list) -> list[int]:
     """Find peak usage hours."""
     hours = {}
     for trace in traces:
@@ -1933,36 +1626,36 @@ def _find_peak_usage_hours(traces: List) -> List[int]:
             continue
     return sorted(hours.keys(), key=lambda x: hours[x], reverse=True)[:3]
 
-def _find_slowest_operations(traces: List) -> List[Dict]:
+def _find_slowest_operations(traces: list) -> list[dict]:
     """Find slowest operations."""
     return sorted(traces, key=lambda x: x.get("duration_ms", 0), reverse=True)[:5]
 
-def _analyze_error_patterns(traces: List) -> Dict[str, Any]:
+def _analyze_error_patterns(traces: list) -> dict[str, Any]:
     """Analyze error patterns."""
     errors = [t for t in traces if t.get("status") != "completed"]
     return {"total_errors": len(errors), "error_rate": len(errors) / len(traces) if traces else 0}
 
-def _identify_bottlenecks(patterns: Dict) -> List[str]:
+def _identify_bottlenecks(patterns: dict) -> list[str]:
     """Identify performance bottlenecks."""
     return ["Monitor slowest operations for potential bottlenecks"]
 
-def _find_optimization_opportunities(patterns: Dict) -> List[str]:
+def _find_optimization_opportunities(patterns: dict) -> list[str]:
     """Find optimization opportunities."""
     return ["Resource pooling", "Async optimization"]
 
-def _generate_scaling_recommendations(patterns: Dict) -> List[str]:
+def _generate_scaling_recommendations(patterns: dict) -> list[str]:
     """Generate scaling recommendations."""
     return ["Scale vertically if CPU/RAM usage stays high"]
 
-def _analyze_usage_trends(traces: List) -> Dict[str, Any]:
+def _analyze_usage_trends(traces: list) -> dict[str, Any]:
     """Analyze usage trends."""
     return {"trend": "Stable"}
 
-def _generate_interaction_recommendations(patterns: Dict, insights: Dict) -> List[str]:
+def _generate_interaction_recommendations(patterns: dict, insights: dict) -> list[str]:
     """Generate interaction recommendations."""
     return ["Optimize hot paths identified in traces"]
 
-def _collect_current_metrics() -> Dict[str, Any]:
+def _collect_current_metrics() -> dict[str, Any]:
     """Collect current system metrics."""
     return {
         "cpu_percent": psutil.cpu_percent(),
@@ -1970,20 +1663,20 @@ def _collect_current_metrics() -> Dict[str, Any]:
         "disk_percent": psutil.disk_usage('/').percent
     }
 
-async def _collect_recent_traces_from_storage() -> List[Dict]:
+async def _collect_recent_traces_from_storage() -> list[dict]:
     """Collect recent traces from storage."""
     return await storage.get("trace_history:system", [])
 
-async def _check_performance_alerts(ctx: Context, metrics: PerformanceMetrics) -> List[Dict]:
+async def _check_performance_alerts(ctx: Context, metrics: PerformanceMetrics) -> list[dict]:
     """Check for performance alerts against stored configurations."""
     triggered_alerts = []
     configs = await storage.get("alert_configs", [])
-    
+
     for config_data in configs:
         config = AlertConfig(**config_data)
         if not config.enabled:
             continue
-            
+
         metric_value = None
         if config.metric_name == "cpu_percent":
             metric_value = metrics.cpu_percent
@@ -1991,7 +1684,7 @@ async def _check_performance_alerts(ctx: Context, metrics: PerformanceMetrics) -
             metric_value = metrics.memory_mb
         elif config.metric_name == "disk_usage_percent":
             metric_value = metrics.disk_usage_percent
-            
+
         if metric_value is not None:
             triggered = False
             if config.operator == "gt" and metric_value > config.threshold:
@@ -2002,18 +1695,18 @@ async def _check_performance_alerts(ctx: Context, metrics: PerformanceMetrics) -
                 triggered = True
             elif config.operator == "ne" and metric_value != config.threshold:
                 triggered = True
-                
+
             if triggered:
                 alert_counter.add(1, {"metric": config.metric_name, "severity": config.severity})
                 triggered_alerts.append({
-                    "config": config.dict(),
+                    "config": config.model_dump(mode="json"),
                     "current_value": metric_value,
                     "timestamp": datetime.now().isoformat()
                 })
-                
+
     return triggered_alerts
 
-def _generate_performance_recommendations(metrics: PerformanceMetrics, trends: Dict) -> List[str]:
+def _generate_performance_recommendations(metrics: PerformanceMetrics, trends: dict) -> list[str]:
     """Generate performance recommendations."""
     recommendations = []
 
@@ -2029,7 +1722,7 @@ def _generate_performance_recommendations(metrics: PerformanceMetrics, trends: D
     return recommendations
 
 # Helper functions for log analysis
-def _analyze_log_results(result: Dict[str, Any]) -> Dict[str, Any]:
+def _analyze_log_results(result: dict[str, Any]) -> dict[str, Any]:
     """Analyze Loki query results."""
     try:
         data = result.get("data", {})
@@ -2065,9 +1758,9 @@ def _analyze_log_results(result: Dict[str, Any]) -> Dict[str, Any]:
             "result_count": len(results)
         }
     except Exception as e:
-        return {"error": f"Analysis failed: {str(e)}"}
+        return {"error": f"Analysis failed: {e!s}"}
 
-def _extract_log_patterns(result: Dict[str, Any], min_occurrences: int) -> List[Dict[str, Any]]:
+def _extract_log_patterns(result: dict[str, Any], min_occurrences: int) -> list[dict[str, Any]]:
     """Extract common log patterns."""
     patterns = []
     try:
@@ -2075,7 +1768,7 @@ def _extract_log_patterns(result: Dict[str, Any], min_occurrences: int) -> List[
         message_counts = {}
 
         for result_item in result.get("data", {}).get("result", []):
-            for timestamp, message in result_item.get("values", []):
+            for _timestamp, message in result_item.get("values", []):
                 # Simple word-based patterns
                 words = message.lower().split()
                 for i in range(len(words) - 2):
@@ -2096,7 +1789,7 @@ def _extract_log_patterns(result: Dict[str, Any], min_occurrences: int) -> List[
 
     return patterns
 
-def _detect_log_anomalies(result: Dict[str, Any], time_window: str) -> List[Dict[str, Any]]:
+def _detect_log_anomalies(result: dict[str, Any], time_window: str) -> list[dict[str, Any]]:
     """Detect log anomalies."""
     anomalies = []
     try:
@@ -2105,7 +1798,7 @@ def _detect_log_anomalies(result: Dict[str, Any], time_window: str) -> List[Dict
         total_count = 0
 
         for result_item in result.get("data", {}).get("result", []):
-            for timestamp, message in result_item.get("values", []):
+            for _timestamp, message in result_item.get("values", []):
                 total_count += 1
                 if "error" in message.lower() or "exception" in message.lower():
                     error_count += 1
@@ -2126,7 +1819,7 @@ def _detect_log_anomalies(result: Dict[str, Any], time_window: str) -> List[Dict
 
     return anomalies
 
-def _analyze_log_trends(result: Dict[str, Any]) -> Dict[str, Any]:
+def _analyze_log_trends(result: dict[str, Any]) -> dict[str, Any]:
     """Analyze log trends over time."""
     trends = {"trend": "stable", "description": "Log volume appears stable"}
     try:
@@ -2134,7 +1827,7 @@ def _analyze_log_trends(result: Dict[str, Any]) -> Dict[str, Any]:
         timestamps = []
 
         for result_item in result.get("data", {}).get("result", []):
-            for ts, message in result_item.get("values", []):
+            for ts, _message in result_item.get("values", []):
                 timestamps.append(int(ts))
 
         if len(timestamps) > 10:
@@ -2158,7 +1851,7 @@ def _analyze_log_trends(result: Dict[str, Any]) -> Dict[str, Any]:
 
     return trends
 
-def _generate_log_recommendations(patterns: List, anomalies: List, trends: Dict) -> List[str]:
+def _generate_log_recommendations(patterns: list, anomalies: list, trends: dict) -> list[str]:
     """Generate log analysis recommendations."""
     recommendations = []
 
@@ -2176,7 +1869,7 @@ def _generate_log_recommendations(patterns: List, anomalies: List, trends: Dict)
 
     return recommendations
 
-def _correlate_logs_metrics(logs: Dict, metrics: Dict) -> Dict[str, Any]:
+def _correlate_logs_metrics(logs: dict, metrics: dict) -> dict[str, Any]:
     """Correlate logs with metrics."""
     return {
         "strength": 0.7,  # Mock correlation strength
@@ -2184,9 +1877,20 @@ def _correlate_logs_metrics(logs: Dict, metrics: Dict) -> Dict[str, Any]:
         "insights": ["Logs show errors during high CPU periods", "Correlation suggests resource constraints"]
     }
 
+from observability_mcp.agentic_workflow import register_agentic_observability_tools  # noqa: E402
+from observability_mcp.asgi import build_asgi_app  # noqa: E402
+from observability_mcp.prefab_cards import register_prefab_cards  # noqa: E402
+
+register_agentic_observability_tools(mcp)
+register_prefab_cards(mcp)
+
+# ASGI: REST /api/* for web_sota + MCP at /mcp
+app = build_asgi_app(mcp)
+
+
 def main(args=None):
     """Main entry point for the observability MCP server."""
-    logger.info("Starting Observability MCP Server", version="0.1.0")
+    logger.info("Starting Observability MCP Server", version="0.2.1")
     run_server(mcp, args=args, server_name="observability-mcp")
 
 if __name__ == "__main__":

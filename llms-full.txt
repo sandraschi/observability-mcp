@@ -1,0 +1,31 @@
+# observability-mcp (full index)
+
+See llms.txt for the short index. This file lists modules and SOTA surfaces.
+
+## Package layout
+
+- observability_mcp/server.py — MCP tools and lifespan
+- observability_mcp/clients.py — LokiClient, GrafanaClient
+- observability_mcp/models_storage.py — Pydantic models, JSON storage, rate limits
+- observability_mcp/asgi.py — REST /api/*, /docs, /openapi.json, /mcp mount
+- observability_mcp/agentic_workflow.py — agentic_observability_workflow
+- observability_mcp/prefab_cards.py — Prefab card tools (optional)
+- observability_mcp/sota_registration.py — skills provider, SOTA resources
+- observability_mcp/fleet_tool_metrics.py — mcp_tool_* middleware
+- observability_mcp/skills/observability-expert/SKILL.md
+
+## MCP tools (~21)
+
+Core: check_stack_status, monitor_server_health, query_loki_logs, manage_grafana_dashboards, manage_grafana_datasources, show_status_dashboard, provision_standard_dashboards, agentic_observability_workflow.
+
+Prefab (OBSERVABILITY_PREFAB_TOOLS=0 to disable): observability_stack_health_card, observability_grafana_dashboards_card, observability_capabilities_card.
+
+## Resources
+
+resource://observability/capabilities
+resource://observability/sota/manifest
+resource://observability/prefab/manifest
+
+## Ports
+
+12000 Grafana, 12001 Prometheus, 12002 Loki, 12007 MCP HTTP, 12008 web UI, 12009 process /metrics

@@ -4,22 +4,22 @@
   <a href="https://github.com/casey/just"><img src="https://img.shields.io/badge/just-ready_to_go-7c5cfc?style=flat-square&logo=just&logoColor=white" alt="Just"></a>
   <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="Ruff"></a>
   <a href="https://python.org"><img src="https://img.shields.io/badge/Python-3.13+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python"></a>
-  <a href="https://github.com/PrefectHQ/fastmcp"><img src="https://img.shields.io/badge/FastMCP-3.2-7c5cfc?style=flat-square" alt="FastMCP"></a>
+  <a href="https://github.com/jlowin/fastmcp"><img src="https://img.shields.io/badge/FastMCP-3.3+-7c5cfc?style=flat-square" alt="FastMCP"></a>
 </p>
 
 
-> 📖 **[Installation Guide](INSTALL.md)** — quick start, manual setup, and troubleshooting
+> 📖 **[Installation Guide](INSTALL.md)** · **[PRD](docs/PRD.md)** · **[Changelog](CHANGELOG.md)** · **[FastMCP status](docs/FASTMCP_STATUS.md)**
 
-**FastMCP 3.1.0-powered observability server for monitoring MCP ecosystems**
+**FastMCP 3.3+ control plane for unified fleet monitoring (Grafana / Prometheus / Loki on port 12000)**
 
-[![FastMCP](https://img.shields.io/badge/FastMCP-3.3-blue.svg)](https://github.com/jlowin/fastmcp)
+[![FastMCP](https://img.shields.io/badge/FastMCP-3.3+-blue.svg)](https://github.com/jlowin/fastmcp)
 [![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-Enabled-green.svg)](https://opentelemetry.io)
 [![Prometheus](https://img.shields.io/badge/Prometheus-Ready-orange.svg)](https://prometheus.io)
 [![Grafana](https://img.shields.io/badge/Grafana-Dashboards-blue.svg)](https://grafana.com)
 [![Loki](https://img.shields.io/badge/Loki-Logs-green.svg)](https://grafana.com/oss/loki/)
 [![GitHub](https://img.shields.io/badge/GitHub-sandraschi/observability--mcp-blue)](https://github.com/sandraschi/observability-mcp)
 
-A comprehensive observability server built on FastMCP 3.1.0 that leverages OpenTelemetry integration, persistent storage, and advanced monitoring capabilities to provide production-grade observability for MCP server ecosystems. Features state-of-the-art Grafana dashboards for visualization, Loki for centralized log aggregation, and Prometheus for metrics collection.
+MCP + web UI for the **unified** observability stack in `mcp-central-docs/monitoring` (host **12000–12006**). Agents get Grafana/Loki/Prometheus tools; humans get a **Charts** dashboard picker at **:12008** that explains boards in plain language. See [MONITORING_CURRENT_SETUP](https://github.com/sandraschi/mcp-central-docs/blob/main/monitoring/MONITORING_CURRENT_SETUP.md).
 
 ---
 
@@ -39,7 +39,7 @@ If you don't have `just` installed:
 
 ##  Features
 
-### **FastMCP 3.1.0 Integration**
+### **FastMCP 3.3+ Integration**
 -  **OpenTelemetry Integration** - Distributed tracing and metrics collection
 -  **Enhanced Storage Backend** - Persistent metrics and historical data
 -  **Production-Ready** - Built for high-performance monitoring
@@ -85,7 +85,7 @@ Add to your `claude_desktop_config.json`:
 ```
 ### Prerequisites
 - Python 3.11+
-- FastMCP 3.1.0+ (automatically installed)
+- FastMCP 3.3++ (automatically installed)
 
 ### Install from Source
 ```bash
@@ -195,10 +195,10 @@ Add to your `claude_desktop_config.json`:
 ### Environment Variables
 ```bash
 # Prometheus metrics server port
-PROMETHEUS_PORT=9090
+PROMETHEUS_PORT=12009
 
 # Loki configuration
-LOKI_URL=http://localhost:3100
+LOKI_URL=http://127.0.0.1:12002
 LOG_FILE=/tmp/observability-mcp.log
 
 # OpenTelemetry service name
@@ -225,7 +225,7 @@ Alerts are stored persistently and can be customized through the MCP tools.
 ##  Monitoring Dashboard
 
 ### Prometheus Metrics
-Access metrics at: `http://localhost:9090/metrics`
+Access metrics at: `http://127.0.0.1:12009/metrics`
 
 Available metrics:
 ```
@@ -248,8 +248,7 @@ mcp_alerts_triggered{type="active|anomaly"} 1
 **Grafana Dashboards are State-of-the-Art for Observability**
 
 1. **Add Data Sources in Grafana:**
-   - Add Prometheus as a data source (http://localhost:9090)
-   - Add Loki as a data source (http://localhost:3100)
+   - Use unified stack: Grafana http://127.0.0.1:12000, Prometheus http://127.0.0.1:12001, Loki http://127.0.0.1:12002
 
 2. **Import Dashboards:**
    - Import the provided `mcp-observability.json` dashboard
@@ -269,7 +268,7 @@ mcp_alerts_triggered{type="active|anomaly"} 1
 
 ##  Architecture
 
-### FastMCP 3.1.0 Features Leveraged
+### FastMCP 3.3+ Features Leveraged
 
 #### **OpenTelemetry Integration**
 - **Distributed Tracing**: Track requests across multiple MCP servers
@@ -409,14 +408,14 @@ mypy src/
 docker build -t observability-mcp:dev -f Dockerfile.dev .
 
 # Run with hot reload
-docker run -p 9090:9090 -v $(pwd):/app observability-mcp:dev
+docker run -p 12009:12009 -e PROMETHEUS_PORT=12009 -v $(pwd):/app observability-mcp:dev
 ```
 
 ---
 
 ##  Performance Benchmarks
 
-### FastMCP 3.1.0 Benefits
+### FastMCP 3.3+ Benefits
 - **OpenTelemetry Overhead**: <1ms per trace
 - **Storage Performance**: 1000+ metrics/second
 - **Memory Usage**: 50MB baseline + 10MB per monitored service
@@ -448,7 +447,7 @@ pip check
 #### Metrics Not Appearing
 ```bash
 # Check Prometheus endpoint
-curl http://localhost:9090/metrics
+curl http://127.0.0.1:12009/metrics
 
 # Verify OpenTelemetry configuration
 observability-mcp metrics
@@ -476,7 +475,7 @@ observability-mcp metrics
 5. Submit a pull request
 
 ### Code Standards
-- **FastMCP 3.1.0+**: Use latest features and patterns
+- **FastMCP 3.3++**: Use latest features and patterns
 - **OpenTelemetry**: Follow OTEL  practices
 - **Async First**: All operations should be async
 - **Type Hints**: Full type coverage required
@@ -528,4 +527,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Built with  using FastMCP 3.1.0, OpenTelemetry, Prometheus, Grafana & Loki - State-of-the-Art Observability**
+**Built with  using FastMCP 3.3+, OpenTelemetry, Prometheus, Grafana & Loki - State-of-the-Art Observability**

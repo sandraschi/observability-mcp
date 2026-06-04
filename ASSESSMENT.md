@@ -1,58 +1,39 @@
-# observability-mcp - Project Assessment
+# observability-mcp — Project Assessment
 
-**Category**: MCP Server  
-**Assessment Date**: 2026-01-01  
-**Status**: Runt
+**Category:** MCP Server (observability control plane)  
+**Assessment date:** 2026-06-03  
+**Version:** 0.2.0
 
----
-
-## 📊 **Assessment Summary**
+## Summary
 
 | Metric | Value |
 |--------|-------|
-| **Status** | Runt |
-| **Development Status** | Needs Major Work |
-| **Runt Status** | RUNT - No MCPB packaging |
-| **Last Modified** | 01/01/2026 12:21:20 |
-| **Has Git Repository** | True |
-| **Has Proper Structure** | True |
-| **Has MCPB Packaging** | False |
-| **Has CI/CD Pipeline** | False |
-| **Has Monitoring Stack** | True |
+| **Status** | Active — 0.2.0 unified-port + Charts web UI |
+| **FastMCP** | 3.3+ declared; partial SOTA — see `docs/FASTMCP_STATUS.md` |
+| **Unified PLG** | Consumer only (12000–12006), not host |
+| **MCPB packaging** | manifest.json present; not fully validated |
+| **CI/CD** | Not configured |
+| **Lint (Ruff)** | ~26 issues remain in `server.py` after 277 auto-fixes; backups excluded |
 
----
+## Standards (0.2.0)
 
-## 🎯 **Standards Compliance**
+- ✅ FastMCP 3.3+ dependency, HTTP/stdio, lifespan, MCP bridge
+- ✅ Tool metrics middleware (`mcp_tool_*`)
+- ✅ Prompts + capabilities resource
+- ✅ Prefab status dashboard tool
+- ✅ Web Charts hub + docs/PRD + CHANGELOG
+- ⚠️ Portmanteau, skills, agentic sampling, full Prefab list tools
+- ❌ `uv.lock`, CI, MCPB pack pipeline
 
-- ✅ Proper project structure
-- ✅ Monitoring stack
----
+## Next steps
 
-## 📋 **Important TODOs**
+1. Portmanteau tool consolidation  
+2. `skills/observability-expert/SKILL.md` + provider  
+3. CI: ruff + pytest + web `npm run build`  
+4. Archive/delete `server_*.py` backup modules  
 
-- 🔴 **CRITICAL**: RUNT - No MCPB packaging
-- 🔴 **CRITICAL**: Implement MCPB packaging (manifest.json)
-- 🟡 **IMPORTANT**: Set up CI/CD pipeline
----
+## References
 
-## 🚀 **Next Steps**
-
-### **Major Refactoring Required**
-1. **Initialize Git repository** if missing
-2. **Implement proper project structure**
-3. **Set up MCPB packaging**
-4. **Create CI/CD pipeline**
-5. **Update documentation**
-6. **Implement monitoring stack**
----
-
-## 📚 **References**
-
-- [MCP Central Documentation Standards](../STANDARDS.md)
-- [FastMCP 2.12 Migration Guide](../FASTMCP_2.12_MIGRATION.md)
-- [MCPB Packaging Standards](../MCPB_PACKAGING_STANDARDS.md)
-- [Monitoring Standards](../monitoring/README.md)
-
----
-
-*Assessment generated on 2026-01-01 21:47:42*
+- [docs/PRD.md](./docs/PRD.md)
+- [docs/FASTMCP_STATUS.md](./docs/FASTMCP_STATUS.md)
+- [mcp-central-docs monitoring](https://github.com/sandraschi/mcp-central-docs/tree/main/monitoring)
