@@ -1,14 +1,14 @@
-set windows-shell := ["pwsh.exe", "-NoLogo", "-Command"]
+﻿set windows-shell := ["pwsh.exe", "-NoLogo", "-Command"]
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
 
 # Display SOTA Industrial Dashboard (terminal help — fleet standard)
 default:
-    @pwsh.exe -NoProfile -ExecutionPolicy Bypass -File ../mcp-central-docs/scripts/just-industrial-dashboard.ps1 -Path . -Title observability-mcp -Version 0.3.0b1 -Subtitle "Web http://127.0.0.1:12008 | MCP http://127.0.0.1:12007/mcp"
+    @pwsh.exe -NoProfile -ExecutionPolicy Bypass -File  -Path . -Title observability-mcp -Version 0.3.0b1 -Subtitle "Web http://127.0.0.1:12008 | MCP http://127.0.0.1:12007/mcp"
 
 # Open click-to-run recipe dashboard in browser (port 11030 — not 10789)
 just-ui:
-    @pwsh.exe -NoProfile -ExecutionPolicy Bypass -File ../mcp-central-docs/scripts/just-dashboard.ps1 -Path . -Port 11030
+    @pwsh.exe -NoProfile -ExecutionPolicy Bypass -File  -Path . -Port 11030
 
 # ── Quality ───────────────────────────────────────────────────────────────────
 
@@ -92,7 +92,7 @@ docker-reset:
 docker-status:
     @Write-Host " [System] Probing Docker infrastructure..." -ForegroundColor Cyan
     docker version
-    Set-Location '{{justfile_directory()}}\..\mcp-central-docs\monitoring'
+    Set-Location '{{justfile_directory()}}\
     docker compose -f docker-compose.unified-monitoring.yml ps
 
 # ── Deployment ────────────────────────────────────────────────────────────────
@@ -103,3 +103,4 @@ build:
     uv build
     Set-Location '{{justfile_directory()}}\web_sota'
     npm run build
+
