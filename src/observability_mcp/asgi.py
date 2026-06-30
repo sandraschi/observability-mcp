@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
 
 import aiohttp
 from starlette.applications import Starlette
@@ -55,8 +54,7 @@ def build_asgi_app(mcp) -> Starlette:
         return JSONResponse(
             {
                 "ollama_detected": ollama_ok,
-                "configured_sampling_url": os.getenv("OBSERVABILITY_SAMPLING_BASE_URL")
-                or os.getenv("LLM_BASE_URL"),
+                "configured_sampling_url": os.getenv("OBSERVABILITY_SAMPLING_BASE_URL") or os.getenv("LLM_BASE_URL"),
                 "configured_model": os.getenv("OBSERVABILITY_LLM_MODEL", "llama3.2"),
                 "probes": probes,
                 "recommendation": None

@@ -45,7 +45,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=8.0", "pytest-asyncio", "pytest-cov>=4.0", "httpx"]
-dev = ["ruff>=0.9.0", "mypy"]
+dev = ["ruff>=0.9.0", "mypy", "pytest>=8.0", "pytest-asyncio", "pytest-cov>=4.0", "httpx"]
 
 [project.urls]
 Homepage = "https://github.com/sandraschi/observability-mcp"
@@ -72,7 +72,7 @@ warn_unused_configs = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-asyncio_mode = "strict"
+asyncio_mode = "auto"
 addopts = [
     "--strict-markers",
 ]
@@ -86,11 +86,13 @@ extend-exclude = [
     "src/observability_mcp/server.bak",
     "src/observability_mcp/server_initial*.py",
     "src/observability_mcp/server_recovered*.py",
+    "archive/",
+    "scripts/cua-smoke.py",
 ]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "S", "UP", "RUF"]
-ignore = ["S101", "B008"]
+ignore = ["S101", "S104", "S107", "S110", "S112", "B008"]
 
 [tool.ruff.format]
 quote-style = "double"

@@ -51,9 +51,7 @@ class LokiClient:
         if end:
             params["end"] = end
         try:
-            async with self.session.get(
-                f"{self.loki_url}/loki/api/v1/query_range", params=params
-            ) as response:
+            async with self.session.get(f"{self.loki_url}/loki/api/v1/query_range", params=params) as response:
                 if response.status == 200:
                     return await response.json()
                 return {"error": f"Query failed with status {response.status}"}

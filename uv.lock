@@ -1140,7 +1140,11 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
+    { name = "httpx" },
     { name = "mypy" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
     { name = "ruff" },
 ]
 test = [
@@ -1154,6 +1158,7 @@ test = [
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.9.0" },
     { name = "fastmcp", specifier = ">=3.3,<4" },
+    { name = "httpx", marker = "extra == 'dev'" },
     { name = "httpx", marker = "extra == 'test'" },
     { name = "mypy", marker = "extra == 'dev'" },
     { name = "opentelemetry-distro", specifier = ">=0.50b0" },
@@ -1164,8 +1169,11 @@ requires-dist = [
     { name = "prometheus-client", specifier = ">=0.21.1" },
     { name = "psutil", specifier = ">=5.9.0" },
     { name = "pydantic", extras = ["email"], specifier = ">=2.9.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'" },
     { name = "pytest-asyncio", marker = "extra == 'test'" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0" },
     { name = "pytest-cov", marker = "extra == 'test'", specifier = ">=4.0" },
     { name = "python-json-logger", specifier = ">=2.0.7" },
     { name = "rich", specifier = ">=13.8.0" },

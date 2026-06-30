@@ -5,26 +5,28 @@ Tests FastMCP 2.14.1 integration, OpenTelemetry functionality,
 persistent storage, and all monitoring tools.
 """
 
-import asyncio
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from observability_mcp.models_storage import AlertConfig, HealthCheckResult, PerformanceMetrics
 from observability_mcp.server import (
-    mcp,
     TraceInfo,
-    monitor_server_health,
+    alert_on_anomalies,
     collect_performance_metrics,
     generate_performance_reports,
-    alert_on_anomalies,
+    mcp,
+    monitor_server_health,
     monitor_system_resources,
 )
-from observability_mcp.models_storage import AlertConfig, HealthCheckResult, PerformanceMetrics
 
 
 class _FakeHttpResponse:
     status = 200
-    headers = {"content-type": "text/plain"}
+
+    def __init__(self):
+        self.headers = {"content-type": "text/plain"}
 
     async def read(self):
         return b"OK"
@@ -89,7 +91,7 @@ class TestHealthMonitoring:
 
             assert result["health_check"]["status"] == "healthy"
             assert result["health_check"]["response_time_ms"] >= 0
-            assert 'recommendations' in result
+            assert "recommendations" in result
 
     @pytest.mark.asyncio
     async def test_monitor_server_health_failure(self):
@@ -105,8 +107,8 @@ class TestHealthMonitoring:
                     service_url="http://example.com/health",
                 )
 
-            assert result['health_check']['status'] == 'unhealthy'
-            assert 'error_message' in result['health_check']
+            assert result["health_check"]["status"] == "unhealthy"
+            assert "error_message" in result["health_check"]
 
 
 class TestPerformanceMonitoring:
@@ -115,7 +117,7 @@ class TestPerformanceMonitoring:
     @pytest.mark.asyncio
     async def test_collect_performance_metrics(self):
         """Test performance metrics collection."""
-        with patch('observability_mcp.server.psutil') as mock_psutil:
+        with patch("observability_mcp.server.psutil") as mock_psutil:
             # Mock psutil calls
             mock_psutil.cpu_percent.return_value = 45.5
             mock_psutil.virtual_memory.return_value = MagicMock()
@@ -123,10 +125,7 @@ class TestPerformanceMonitoring:
             mock_psutil.disk_usage.return_value = MagicMock()
             mock_psutil.disk_usage.return_value.percent = 75.0
             mock_psutil.net_io_counters.return_value = MagicMock(
-                bytes_sent=1000,
-                bytes_recv=2000,
-                packets_sent=10,
-                packets_recv=20
+                bytes_sent=1000, bytes_recv=2000, packets_sent=10, packets_recv=20
             )
 
             ctx = MagicMock()
@@ -135,11 +134,11 @@ class TestPerformanceMonitoring:
                 mock_storage.set = AsyncMock()
                 result = await collect_performance_metrics(ctx=ctx, service_name="test-service")
 
-            assert result['metrics']['cpu_percent'] == 45.5
-            assert result['metrics']['memory_mb'] == 1024.0  # 1GB in MB
-            assert result['metrics']['disk_usage_percent'] == 75.0
-            assert 'trends' in result
-            assert 'recommendations' in result
+            assert result["metrics"]["cpu_percent"] == 45.5
+            assert result["metrics"]["memory_mb"] == 1024.0  # 1GB in MB
+            assert result["metrics"]["disk_usage_percent"] == 75.0
+            assert "trends" in result
+            assert "recommendations" in result
 
 
 class TestReporting:
@@ -153,7 +152,7 @@ class TestReporting:
             {
                 "timestamp": (datetime.now() - timedelta(days=i)).isoformat(),
                 "cpu_percent": 50.0 + i,
-                "memory_mb": 1000.0 + i * 10
+                "memory_mb": 1000.0 + i * 10,
             }
             for i in range(7)  # 7 days of data
         ]
@@ -168,11 +167,11 @@ class TestReporting:
                 days=7,
             )
 
-        assert 'summary' in result
-        assert 'trends' in result
-        assert 'anomalies' in result
-        assert 'recommendations' in result
-        assert result['summary']['total_measurements'] == 7
+        assert "summary" in result
+        assert "trends" in result
+        assert "anomalies" in result
+        assert "recommendations" in result
+        assert result["summary"]["total_measurements"] == 7
 
 
 class TestAlerting:
@@ -183,9 +182,9 @@ class TestAlerting:
         """Test anomaly detection and alerting."""
         # Mock alert configurations
         mock_configs = [
-            AlertConfig(
-                metric_name="cpu_percent", threshold=80.0, operator="gt", severity="warning"
-            ).model_dump(mode="json")
+            AlertConfig(metric_name="cpu_percent", threshold=80.0, operator="gt", severity="warning").model_dump(
+                mode="json"
+            )
         ]
 
         ctx = MagicMock()
@@ -208,10 +207,10 @@ class TestAlerting:
             mock_storage.set = AsyncMock()
             result = await alert_on_anomalies(ctx=ctx, service_name="test-service")
 
-        assert 'active_alerts' in result
-        assert 'detected_anomalies' in result
-        assert 'alert_configs' in result
-        assert 'recommendations' in result
+        assert "active_alerts" in result
+        assert "detected_anomalies" in result
+        assert "alert_configs" in result
+        assert "recommendations" in result
 
 
 class TestSystemMonitoring:
@@ -220,7 +219,7 @@ class TestSystemMonitoring:
     @pytest.mark.asyncio
     async def test_monitor_system_resources(self):
         """Test system resource monitoring."""
-        with patch('observability_mcp.server.psutil') as mock_psutil:
+        with patch("observability_mcp.server.psutil") as mock_psutil:
             # Mock comprehensive system data
             mock_cpu_times = MagicMock()
             mock_cpu_times.user = 100.0
@@ -274,15 +273,14 @@ class TestSystemMonitoring:
                 mock_storage.set = AsyncMock()
                 result = await monitor_system_resources(ctx=ctx)
 
-            assert 'system_status' in result
-            assert 'health_analysis' in result
-            assert 'recommendations' in result
+            assert "system_status" in result
+            assert "health_analysis" in result
+            assert "recommendations" in result
 
-            system_status = result['system_status']
-            assert system_status['cpu']['percent'] == 35.5
-            assert system_status['memory']['percent'] == 50.0
-            assert system_status['disk']['percent'] == 50.0
-
+            system_status = result["system_status"]
+            assert system_status["cpu"]["percent"] == 35.5
+            assert system_status["memory"]["percent"] == 50.0
+            assert system_status["disk"]["percent"] == 50.0
 
 
 class TestDataModels:
@@ -291,10 +289,7 @@ class TestDataModels:
     def test_health_check_result_creation(self):
         """Test HealthCheckResult model creation."""
         result = HealthCheckResult(
-            service_name="test-service",
-            status="healthy",
-            response_time_ms=150.0,
-            timestamp=datetime.now()
+            service_name="test-service", status="healthy", response_time_ms=150.0, timestamp=datetime.now()
         )
         assert result.service_name == "test-service"
         assert result.status == "healthy"
@@ -308,7 +303,7 @@ class TestDataModels:
             cpu_percent=45.5,
             memory_mb=1024.0,
             disk_usage_percent=75.0,
-            network_io={"bytes_sent": 1000, "bytes_recv": 2000}
+            network_io={"bytes_sent": 1000, "bytes_recv": 2000},
         )
         assert metrics.service_name == "test-service"
         assert metrics.cpu_percent == 45.5
@@ -322,7 +317,7 @@ class TestDataModels:
             operation="test-operation",
             start_time=datetime.now(),
             duration_ms=150.5,
-            status="completed"
+            status="completed",
         )
         assert trace.trace_id == "test-trace-id"
         assert trace.operation == "test-operation"
@@ -330,12 +325,7 @@ class TestDataModels:
 
     def test_alert_config_creation(self):
         """Test AlertConfig model creation."""
-        config = AlertConfig(
-            metric_name="cpu_percent",
-            threshold=90.0,
-            operator="gt",
-            severity="warning"
-        )
+        config = AlertConfig(metric_name="cpu_percent", threshold=90.0, operator="gt", severity="warning")
         assert config.metric_name == "cpu_percent"
         assert config.threshold == 90.0
         assert config.operator == "gt"
@@ -348,7 +338,7 @@ class TestIntegration:
     @pytest.mark.asyncio
     async def test_full_monitoring_workflow(self):
         """Test complete monitoring workflow."""
-        with patch('observability_mcp.server.psutil') as mock_psutil:
+        with patch("observability_mcp.server.psutil") as mock_psutil:
             # Setup mocks
             mock_psutil.cpu_percent.return_value = 65.0
             mock_memory = MagicMock()
@@ -374,6 +364,7 @@ class TestIntegration:
                 alert_result = await alert_on_anomalies(ctx=ctx)
                 assert "active_alerts" in alert_result
                 assert metrics_result["metrics"]["cpu_percent"] == 65.0
+
 
 class TestDegradedMode:
     """Test server behaviour when Docker or stack services are unreachable."""
@@ -418,8 +409,7 @@ class TestDegradedMode:
 
         ctx = MagicMock()
 
-        with patch("observability_mcp.server.check_service_connectivity",
-                   new_callable=AsyncMock, return_value=False):
+        with patch("observability_mcp.server.check_service_connectivity", new_callable=AsyncMock, return_value=False):
             result = await check_stack_status(ctx)
 
         assert result["is_healthy"] is False
@@ -430,7 +420,7 @@ class TestDegradedMode:
     @pytest.mark.asyncio
     async def test_show_status_dashboard_docker_down(self):
         """Dashboard renders successfully even when Docker and all services are down."""
-        from observability_mcp.server import show_status_dashboard, _server_state
+        from observability_mcp.server import _server_state, show_status_dashboard
 
         ctx = MagicMock()
         _server_state["degraded_mode"] = True
@@ -458,15 +448,12 @@ class TestDegradedMode:
 
         alerts_ok = {"alerts": []}
 
-        with patch("observability_mcp.server.check_docker_status",
-                   new_callable=AsyncMock, return_value=docker_down), \
-             patch("observability_mcp.server.check_stack_status",
-                   new_callable=AsyncMock, return_value=stack_down), \
-             patch("observability_mcp.server.collect_performance_metrics",
-                   new_callable=AsyncMock, return_value=perf_ok), \
-             patch("observability_mcp.server.manage_alert_configs",
-                   new_callable=AsyncMock, return_value=alerts_ok):
-
+        with (
+            patch("observability_mcp.server.check_docker_status", new_callable=AsyncMock, return_value=docker_down),
+            patch("observability_mcp.server.check_stack_status", new_callable=AsyncMock, return_value=stack_down),
+            patch("observability_mcp.server.collect_performance_metrics", new_callable=AsyncMock, return_value=perf_ok),
+            patch("observability_mcp.server.manage_alert_configs", new_callable=AsyncMock, return_value=alerts_ok),
+        ):
             # Must not raise
             result = await show_status_dashboard(ctx)
 
@@ -482,15 +469,24 @@ class TestDegradedMode:
 
         ctx = MagicMock()
 
-        with patch("observability_mcp.server.check_docker_status",
-                   new_callable=AsyncMock, side_effect=Exception("timeout")), \
-             patch("observability_mcp.server.check_stack_status",
-                   new_callable=AsyncMock, side_effect=Exception("timeout")), \
-             patch("observability_mcp.server.collect_performance_metrics",
-                   new_callable=AsyncMock, side_effect=Exception("psutil error")), \
-             patch("observability_mcp.server.manage_alert_configs",
-                   new_callable=AsyncMock, side_effect=Exception("storage error")):
-
+        with (
+            patch(
+                "observability_mcp.server.check_docker_status", new_callable=AsyncMock, side_effect=Exception("timeout")
+            ),
+            patch(
+                "observability_mcp.server.check_stack_status", new_callable=AsyncMock, side_effect=Exception("timeout")
+            ),
+            patch(
+                "observability_mcp.server.collect_performance_metrics",
+                new_callable=AsyncMock,
+                side_effect=Exception("psutil error"),
+            ),
+            patch(
+                "observability_mcp.server.manage_alert_configs",
+                new_callable=AsyncMock,
+                side_effect=Exception("storage error"),
+            ),
+        ):
             # Must not raise under any circumstances
             result = await show_status_dashboard(ctx)
 
@@ -499,18 +495,15 @@ class TestDegradedMode:
     @pytest.mark.asyncio
     async def test_server_lifespan_prometheus_port_conflict(self):
         """Lifespan sets degraded_mode=True but does not crash on Prometheus port conflict."""
-        from observability_mcp.server import server_lifespan, mcp, _server_state
+        from observability_mcp.server import _server_state, server_lifespan
 
-        with patch("observability_mcp.server.start_http_server",
-                   side_effect=OSError("Address already in use")), \
-             patch("observability_mcp.server.storage.set", new_callable=AsyncMock), \
-             patch("observability_mcp.server.storage.get",
-                   new_callable=AsyncMock, return_value=None):
-
+        with (
+            patch("observability_mcp.server.start_http_server", side_effect=OSError("Address already in use")),
+            patch("observability_mcp.server.storage.set", new_callable=AsyncMock),
+            patch("observability_mcp.server.storage.get", new_callable=AsyncMock, return_value=None),
+        ):
             async with server_lifespan(mcp):
                 pass  # yield point — server is "running"
 
         assert _server_state.get("degraded_mode") is True
         _server_state["degraded_mode"] = False  # cleanup
-
-

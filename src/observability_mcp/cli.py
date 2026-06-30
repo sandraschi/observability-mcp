@@ -11,12 +11,15 @@ from rich.table import Table
 app = typer.Typer(help="Observability MCP Server CLI")
 console = Console()
 
+
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def run(ctx: typer.Context):
     """Run the observability MCP server."""
     from .server import main
+
     # Pass extra arguments to server.main
     main(ctx.args)
+
 
 @app.command()
 def health():
@@ -25,6 +28,7 @@ def health():
     console.print("Version: 0.2.0")
     console.print("Status: Ready to monitor MCP ecosystems")
     console.print("FastMCP: 3.3+ with OpenTelemetry integration")
+
 
 @app.command()
 def metrics():
@@ -41,6 +45,7 @@ def metrics():
     table.add_row("Persistent Storage", "✓ Enabled", "Historical data retention")
 
     console.print(table)
+
 
 @app.command()
 def docs():
@@ -61,9 +66,11 @@ def docs():
     console.print("• analyze_mcp_interactions - Usage pattern analysis")
     console.print("• export_metrics - Multiple export formats")
 
+
 def main():
     """Main CLI entry point."""
     app(prog_name="observability-mcp")
+
 
 if __name__ == "__main__":
     main()

@@ -5,9 +5,8 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from fastmcp import Context
-
 import structlog
+from fastmcp import Context
 
 logger = structlog.get_logger("observability_mcp.agentic")
 

@@ -6,9 +6,8 @@ from importlib.metadata import version as pkg_version
 from pathlib import Path
 from typing import Any
 
-from fastmcp import FastMCP
-
 import structlog
+from fastmcp import FastMCP
 
 logger = structlog.get_logger("observability_mcp.sota")
 
