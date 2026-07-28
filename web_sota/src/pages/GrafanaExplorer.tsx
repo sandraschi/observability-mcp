@@ -1,6 +1,3 @@
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { grafanaDashboardUrl } from "@/lib/grafana-url";
 import {
   Activity,
   AlertCircle,
@@ -14,6 +11,9 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { grafanaDashboardUrl } from "@/lib/grafana-url";
 import { callTool } from "../lib/mcp-client";
 
 interface Dashboard {
@@ -68,7 +68,7 @@ export function GrafanaExplorer() {
       await callTool("provision_standard_dashboards", {});
       await loadData();
     } catch (err) {
-      setError("Provisioning failed: " + String(err));
+      setError(`Provisioning failed: ${String(err)}`);
     } finally {
       setProvisioning(false);
     }
@@ -80,7 +80,7 @@ export function GrafanaExplorer() {
       await callTool("manage_grafana_dashboards", { operation: "delete", uid });
       await loadData();
     } catch (err) {
-      setError("Delete failed: " + String(err));
+      setError(`Delete failed: ${String(err)}`);
     }
   }
 
@@ -98,7 +98,7 @@ export function GrafanaExplorer() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
   return (
     <div className="space-y-8 pb-12">

@@ -1,7 +1,7 @@
-import { Layers } from "lucide-react";
 import {
   Cpu,
   HardDrive,
+  Layers,
   MemoryStick,
   Minus,
   Network,
@@ -61,7 +61,10 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
 function Trend({
   history,
   field,
-}: { history: HistoryPoint[]; field: keyof HistoryPoint }) {
+}: {
+  history: HistoryPoint[];
+  field: keyof HistoryPoint;
+}) {
   if (history.length < 3) return <Minus className="w-3 h-3 text-zinc-500" />;
   const recent = history.slice(-5).map((h) => h[field] as number);
   const avg =
@@ -78,7 +81,12 @@ function GaugeBar({
   max = 100,
   warn = 70,
   crit = 90,
-}: { value: number; max?: number; warn?: number; crit?: number }) {
+}: {
+  value: number;
+  max?: number;
+  warn?: number;
+  crit?: number;
+}) {
   const pct = Math.min((value / max) * 100, 100);
   const color =
     pct >= crit
@@ -140,7 +148,7 @@ export function Dashboard() {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, []);
+  }, [fetchMetrics]);
 
   const fmtMb = (mb: number) =>
     mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb.toFixed(0)} MB`;

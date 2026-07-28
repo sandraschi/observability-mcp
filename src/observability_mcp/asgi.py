@@ -16,7 +16,7 @@ from observability_mcp.openapi_spec import OPENAPI_SPEC, SWAGGER_HTML
 
 
 def build_asgi_app(mcp) -> Starlette:
-    mcp_http = mcp.http_app(path="/mcp")
+    mcp_http = mcp.http_app(path="/")
 
     async def health(_: Request) -> JSONResponse:
         return JSONResponse({"status": "ok", "service": "observability-mcp"})

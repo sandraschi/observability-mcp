@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   Activity,
   Bell,
@@ -20,12 +19,13 @@ import {
   WifiOff,
   X,
 } from "lucide-react";
+import { useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { ConnectionBootstrap } from "@/components/ConnectionBootstrap";
 import { LoggerPanel } from "@/components/layout/LoggerPanel";
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useAppStore } from "@/lib/store";
+import { cn } from "@/lib/utils";
 
 const nav = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -66,8 +66,12 @@ export function AppLayout() {
           </div>
           {open && (
             <div>
-              <div className="font-bold leading-tight font-mono text-sm">observability-mcp</div>
-              <div className="text-[10px] text-muted-foreground">v0.3.0b1 · :12008</div>
+              <div className="font-bold leading-tight font-mono text-sm">
+                observability-mcp
+              </div>
+              <div className="text-[10px] text-muted-foreground">
+                v0.3.0b1 · :12008
+              </div>
             </div>
           )}
         </div>
@@ -80,7 +84,9 @@ export function AppLayout() {
               className={({ isActive }) =>
                 cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors font-mono",
-                  isActive ? "bg-secondary text-secondary-foreground" : "hover:bg-muted/50",
+                  isActive
+                    ? "bg-secondary text-secondary-foreground"
+                    : "hover:bg-muted/50",
                   !open && "justify-center px-2",
                 )
               }
@@ -98,13 +104,28 @@ export function AppLayout() {
             <WifiOff className="h-3 w-3 text-red-400 shrink-0" />
           )}
           {open && (
-            <span className={status === "connected" ? "text-primary" : "text-muted-foreground"}>
-              {status === "connected" ? ":12007 ok" : status === "connecting" ? "connecting…" : "offline"}
+            <span
+              className={
+                status === "connected"
+                  ? "text-primary"
+                  : "text-muted-foreground"
+              }
+            >
+              {status === "connected"
+                ? ":12007 ok"
+                : status === "connecting"
+                  ? "connecting…"
+                  : "offline"}
             </span>
           )}
         </div>
         <div className="p-2 border-t border-border/60">
-          <Button variant="ghost" className="w-full" size="sm" onClick={() => setOpen(!open)}>
+          <Button
+            variant="ghost"
+            className="w-full"
+            size="sm"
+            onClick={() => setOpen(!open)}
+          >
             {open ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
           </Button>
         </div>
@@ -114,7 +135,9 @@ export function AppLayout() {
         <Button variant="ghost" size="icon" onClick={() => setMobile(!mobile)}>
           <Menu className="h-5 w-5" />
         </Button>
-        <span className="font-semibold text-sm font-mono">observability-mcp</span>
+        <span className="font-semibold text-sm font-mono">
+          observability-mcp
+        </span>
       </div>
       {mobile && (
         <div className="md:hidden fixed inset-0 z-40 bg-background/95 pt-14 px-3 pb-6 overflow-y-auto">
@@ -138,7 +161,8 @@ export function AppLayout() {
       <div className="flex-1 flex flex-col min-w-0 min-h-screen pt-12 md:pt-0 pb-24 md:pb-28">
         <header className="hidden md:flex h-14 items-center border-b border-border/60 px-6 bg-background/40 backdrop-blur-sm sticky top-0 z-20">
           <div className="text-sm text-muted-foreground font-mono">
-            MCP <code className="text-primary">/mcp</code> · API <code className="text-primary">/api</code> · PLG{" "}
+            MCP <code className="text-primary">/mcp</code> · API{" "}
+            <code className="text-primary">/api</code> · PLG{" "}
             <code className="text-primary">12000–12002</code>
           </div>
         </header>

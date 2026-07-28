@@ -1,14 +1,15 @@
-﻿set windows-shell := ["pwsh.exe", "-NoLogo", "-Command"]
+set windows-shell := ["powershell.exe", "-NoProfile", "-Command"]
+import 'scripts/just/fleet.just'
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
 
 # Display SOTA Industrial Dashboard (terminal help — fleet standard)
 default:
-    @pwsh.exe -NoProfile -ExecutionPolicy Bypass -File  -Path . -Title observability-mcp -Version 0.3.0b1 -Subtitle "Web http://127.0.0.1:12008 | MCP http://127.0.0.1:12007/mcp"
+    @powershell.exe -NoProfile -ExecutionPolicy Bypass -File  -Path . -Title observability-mcp -Version 0.3.0b1 -Subtitle "Web http://127.0.0.1:12008 | MCP http://127.0.0.1:12007/mcp"
 
 # Open click-to-run recipe dashboard in browser (port 11030 — not 10789)
 just-ui:
-    @pwsh.exe -NoProfile -ExecutionPolicy Bypass -File  -Path . -Port 11030
+    @powershell.exe -NoProfile -ExecutionPolicy Bypass -File  -Path . -Port 11030
 
 # ── Quality ───────────────────────────────────────────────────────────────────
 
@@ -46,7 +47,7 @@ install:
 
 # Start backend + Vite (12007 / 12008) — opens browser when ready
 start:
-    pwsh.exe -NoProfile -ExecutionPolicy Bypass -File web_sota/start.ps1
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File web_sota/start.ps1
 
 # MCP HTTP backend only (12007)
 serve:
@@ -103,4 +104,3 @@ build:
     uv build
     Set-Location '{{justfile_directory()}}\web_sota'
     npm run build
-

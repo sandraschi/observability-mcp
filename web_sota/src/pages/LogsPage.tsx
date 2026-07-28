@@ -1,7 +1,7 @@
-import { useLogger } from "@/context/LoggerContext";
+import { PageHero } from "@/components/layout/PageHero";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
-import { PageHero } from "@/components/layout/PageHero";
+import { useLogger } from "@/context/LoggerContext";
 
 export function LogsPage() {
   const { entries, clear } = useLogger();
@@ -22,7 +22,9 @@ export function LogsPage() {
           size="sm"
           type="button"
           onClick={() => {
-            const blob = new Blob([JSON.stringify(entries, null, 2)], { type: "application/json" });
+            const blob = new Blob([JSON.stringify(entries, null, 2)], {
+              type: "application/json",
+            });
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
@@ -37,11 +39,20 @@ export function LogsPage() {
       <Card>
         <CardTitle>Entries ({entries.length})</CardTitle>
         <ul className="mt-4 max-h-[60vh] overflow-y-auto space-y-1 font-mono text-[11px]">
-          {entries.length === 0 && <li className="text-muted-foreground">No log entries yet.</li>}
+          {entries.length === 0 && (
+            <li className="text-muted-foreground">No log entries yet.</li>
+          )}
           {[...entries].reverse().map((e) => (
             <li key={e.id} className="border-b border-border/30 py-1">
               <span className="text-muted-foreground">{e.ts}</span>{" "}
-              <span className={e.level === "error" ? "text-red-400" : "text-primary"}>[{e.level}]</span> {e.message}
+              <span
+                className={
+                  e.level === "error" ? "text-red-400" : "text-primary"
+                }
+              >
+                [{e.level}]
+              </span>{" "}
+              {e.message}
             </li>
           ))}
         </ul>

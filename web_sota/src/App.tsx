@@ -1,6 +1,7 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AppLayout } from "./components/AppLayout";
 import { Alerts } from "./pages/Alerts";
+import { ApiDocsPage } from "./pages/ApiDocsPage";
 import { AppsPage } from "./pages/AppsPage";
 import { ChatPage } from "./pages/ChatPage";
 import { Control } from "./pages/control";
@@ -8,7 +9,6 @@ import { Dashboard } from "./pages/dashboard";
 import { GrafanaDashboards } from "./pages/GrafanaDashboards";
 import { GrafanaExplorer } from "./pages/GrafanaExplorer";
 import { HealthMonitor } from "./pages/HealthMonitor";
-import { ApiDocsPage } from "./pages/ApiDocsPage";
 import { HelpPage } from "./pages/HelpPage";
 import { LogExplorer } from "./pages/LogExplorer";
 import { LogsPage } from "./pages/LogsPage";

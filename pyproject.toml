@@ -7,7 +7,7 @@ name = "observability-mcp"
 version = "0.3.0b1"
 description = "FastMCP 3.3+ observability control plane for fleet Grafana, Prometheus, and Loki"
 authors = [
-    {name = "Sandra Schipal", email = "sandra@example.com"}
+    {name = "Sandra Schipal", email = "sandraschipal@gmail.com"}
 ]
 readme = "README.md"
 license = {text = "MIT"}
@@ -26,7 +26,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "fastmcp>=3.3,<4",
+    "fastmcp>=3.4.4,<4",
     "opentelemetry-distro>=0.50b0",
     "opentelemetry-instrumentation>=0.50b0",
     "opentelemetry-exporter-prometheus>=0.50b0",
@@ -39,13 +39,13 @@ dependencies = [
     "python-json-logger>=2.0.7",
     "prometheus-client>=0.21.1",
     "typer>=0.12.0",
-    "ruff>=0.15.2",
+    "ruff>=0.16.0,<0.17",
     "prefab-ui>=0.14.0",
 ]
 
 [project.optional-dependencies]
 test = ["pytest>=8.0", "pytest-asyncio", "pytest-cov>=4.0", "httpx"]
-dev = ["ruff>=0.9.0", "mypy", "pytest>=8.0", "pytest-asyncio", "pytest-cov>=4.0", "httpx"]
+dev = ["ruff>=0.16.0,<0.17", "mypy", "pytest>=8.0", "pytest-asyncio", "pytest-cov>=4.0", "httpx"]
 
 [project.urls]
 Homepage = "https://github.com/sandraschi/observability-mcp"

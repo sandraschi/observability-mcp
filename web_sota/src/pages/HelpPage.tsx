@@ -13,9 +13,15 @@ export function HelpPage() {
         <CardTitle>Quick start</CardTitle>
         <ol className="list-decimal list-inside text-sm text-muted-foreground mt-3 space-y-2">
           <li>Start unified monitoring (ports 12000–12006).</li>
-          <li>Run this webapp: <code className="text-primary">web_sota/start.ps1</code></li>
+          <li>
+            Run this webapp:{" "}
+            <code className="text-primary">web_sota/start.ps1</code>
+          </li>
           <li>Open Charts to pick beginner-friendly Grafana dashboards.</li>
-          <li>Use Tools page or IDE MCP on <code className="text-primary">http://127.0.0.1:12007/mcp</code></li>
+          <li>
+            Use Tools page or IDE MCP on{" "}
+            <code className="text-primary">http://127.0.0.1:12007/mcp</code>
+          </li>
         </ol>
       </Card>
       <Card>
@@ -28,8 +34,11 @@ export function HelpPage() {
       <Card>
         <CardTitle>Agentic workflow</CardTitle>
         <p className="text-sm text-muted-foreground mt-2">
-          Tool <code className="text-primary">agentic_observability_workflow</code> runs stack check → error logs → MCP
-          health. Set <code className="text-primary">OBSERVABILITY_SAMPLING_BASE_URL</code> for LLM-planned triage.
+          Tool{" "}
+          <code className="text-primary">agentic_observability_workflow</code>{" "}
+          runs stack check → error logs → MCP health. Set{" "}
+          <code className="text-primary">OBSERVABILITY_SAMPLING_BASE_URL</code>{" "}
+          for LLM-planned triage.
         </p>
       </Card>
     </div>

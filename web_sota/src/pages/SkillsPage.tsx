@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiGet } from "@/api/client";
-import { Card, CardTitle } from "@/components/ui/card";
 import { PageHero } from "@/components/layout/PageHero";
+import { Card, CardTitle } from "@/components/ui/card";
 import { useLogger } from "@/context/LoggerContext";
 
 type SkillMeta = { name: string; uri: string };
@@ -49,7 +49,9 @@ export function SkillsPage() {
             type="button"
             onClick={() => setSelected(s.name)}
             className={`px-3 py-1 rounded-md text-xs font-mono border ${
-              selected === s.name ? "border-primary text-primary bg-primary/10" : "border-border text-muted-foreground"
+              selected === s.name
+                ? "border-primary text-primary bg-primary/10"
+                : "border-border text-muted-foreground"
             }`}
           >
             {s.name}

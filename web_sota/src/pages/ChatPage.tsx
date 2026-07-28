@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { apiGet } from "@/api/client";
+import { PageHero } from "@/components/layout/PageHero";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
-import { PageHero } from "@/components/layout/PageHero";
 import { useLogger } from "@/context/LoggerContext";
 
 const OLLAMA = "http://localhost:11434";
@@ -42,7 +42,10 @@ export function ChatPage() {
   useEffect(() => {
     (async () => {
       try {
-        const d = await apiGet<{ ollama_detected?: boolean; configured_model?: string }>("/api/llm/discover");
+        const d = await apiGet<{
+          ollama_detected?: boolean;
+          configured_model?: string;
+        }>("/api/llm/discover");
         setOllamaUp(Boolean(d.ollama_detected));
         if (d.configured_model) setModel(d.configured_model);
       } catch (e) {
@@ -53,7 +56,7 @@ export function ChatPage() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, []);
 
   async function send() {
     if (!input.trim() || loading) return;
@@ -102,9 +105,13 @@ export function ChatPage() {
           {messages.map((m, i) => (
             <div
               key={`${i}-${m.role}`}
-              className={m.role === "user" ? "text-foreground" : "text-muted-foreground"}
+              className={
+                m.role === "user" ? "text-foreground" : "text-muted-foreground"
+              }
             >
-              <span className="text-xs uppercase text-primary mr-2">{m.role}</span>
+              <span className="text-xs uppercase text-primary mr-2">
+                {m.role}
+              </span>
               {m.content}
             </div>
           ))}

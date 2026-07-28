@@ -44,7 +44,10 @@ function StatusIcon({ status }: { status: string }) {
 function HealthCard({
   result,
   onClear,
-}: { result: CheckResult; onClear: () => void }) {
+}: {
+  result: CheckResult;
+  onClear: () => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const hc = result.health_check;
   const isHealthy = hc.status === "healthy";

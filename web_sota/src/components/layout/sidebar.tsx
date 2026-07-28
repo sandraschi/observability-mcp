@@ -1,4 +1,3 @@
-import { cn } from "@/common/utils";
 import {
   Activity,
   Bot,
@@ -10,6 +9,7 @@ import {
   Settings,
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
+import { cn } from "@/common/utils";
 
 interface SidebarProps {
   collapsed: boolean;

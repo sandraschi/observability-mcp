@@ -1,0 +1,99 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "observability-mcp"
+version = "0.3.0b1"
+description = "FastMCP 3.3+ observability control plane for fleet Grafana, Prometheus, and Loki"
+authors = [
+    {name = "Sandra Schipal", email = "sandra@example.com"}
+]
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.12"
+keywords = ["mcp", "observability", "opentelemetry", "monitoring", "fastmcp", "metrics"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Monitoring",
+    "Topic :: System :: Logging",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+dependencies = [
+    "fastmcp>=3.4.4,<4",
+    "opentelemetry-distro>=0.50b0",
+    "opentelemetry-instrumentation>=0.50b0",
+    "opentelemetry-exporter-prometheus>=0.50b0",
+    "opentelemetry-sdk>=1.28.0",
+    "psutil>=5.9.0",
+    "aiohttp>=3.9.0",
+    "pydantic[email]>=2.9.0",
+    "rich>=13.8.0",
+    "structlog>=24.4.0",
+    "python-json-logger>=2.0.7",
+    "prometheus-client>=0.21.1",
+    "typer>=0.12.0",
+    "ruff>=0.15.2",
+    "prefab-ui>=0.14.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0", "pytest-asyncio", "pytest-cov>=4.0", "httpx"]
+dev = ["ruff>=0.9.0", "mypy", "pytest>=8.0", "pytest-asyncio", "pytest-cov>=4.0", "httpx"]
+
+[project.urls]
+Homepage = "https://github.com/sandraschi/observability-mcp"
+Repository = "https://github.com/sandraschi/observability-mcp"
+Issues = "https://github.com/sandraschi/observability-mcp/issues"
+Documentation = "https://observability-mcp.readthedocs.io/"
+Changelog = "https://github.com/sandraschi/observability-mcp/blob/main/CHANGELOG.md"
+
+[project.scripts]
+observability-mcp = "observability_mcp.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/observability_mcp"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = [
+    "--strict-markers",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = [
+    "src/observability_mcp/server_*.py",
+    "src/observability_mcp/server_*.py.bak",
+    "src/observability_mcp/server.bak",
+    "src/observability_mcp/server_initial*.py",
+    "src/observability_mcp/server_recovered*.py",
+    "archive/",
+    "scripts/cua-smoke.py",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "S", "UP", "RUF"]
+ignore = ["S101", "S104", "S107", "S110", "S112", "B008"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

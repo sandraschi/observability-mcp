@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiGet } from "@/api/client";
-import { Card, CardTitle } from "@/components/ui/card";
 import { PageHero } from "@/components/layout/PageHero";
+import { Card, CardTitle } from "@/components/ui/card";
 import { useLogger } from "@/context/LoggerContext";
 
 type ToolRow = { name: string; description: string };
@@ -45,7 +45,9 @@ export function ToolsPage() {
           {tools.map((t) => (
             <li key={t.name} className="border-b border-border/40 pb-2">
               <div className="font-mono text-sm text-primary">{t.name}</div>
-              <div className="text-xs text-muted-foreground mt-1">{t.description || "—"}</div>
+              <div className="text-xs text-muted-foreground mt-1">
+                {t.description || "—"}
+              </div>
             </li>
           ))}
         </ul>
@@ -56,7 +58,9 @@ export function ToolsPage() {
           {prompts.map((p) => (
             <li key={p.name}>
               <span className="font-mono text-sm text-primary">{p.name}</span>
-              <span className="text-xs text-muted-foreground block">{p.description}</span>
+              <span className="text-xs text-muted-foreground block">
+                {p.description}
+              </span>
             </li>
           ))}
         </ul>

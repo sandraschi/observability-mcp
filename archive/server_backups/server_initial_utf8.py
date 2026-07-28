@@ -1,4 +1,4 @@
-﻿"""
+"""
 Observability MCP Server - FastMCP 2.14.1-powered monitoring for MCP ecosystems.
 
 This server provides comprehensive observability capabilities for MCP server ecosystems,
@@ -75,45 +75,33 @@ tracer = trace.get_tracer("observability-mcp")
 
 # Metrics
 health_check_counter = meter.create_counter(
-    name="mcp_health_checks_total",
-    description="Total number of health checks performed",
-    unit="1"
+    name="mcp_health_checks_total", description="Total number of health checks performed", unit="1"
 )
 
 performance_metric_counter = meter.create_counter(
-    name="mcp_performance_metrics_collected",
-    description="Total number of performance metrics collected",
-    unit="1"
+    name="mcp_performance_metrics_collected", description="Total number of performance metrics collected", unit="1"
 )
 
-trace_counter = meter.create_counter(
-    name="mcp_traces_created",
-    description="Total number of traces created",
-    unit="1"
-)
+trace_counter = meter.create_counter(name="mcp_traces_created", description="Total number of traces created", unit="1")
 
 alert_counter = meter.create_counter(
-    name="mcp_alerts_triggered",
-    description="Total number of alerts triggered",
-    unit="1"
+    name="mcp_alerts_triggered", description="Total number of alerts triggered", unit="1"
 )
 
 # Resource metrics
 cpu_usage_gauge = meter.create_up_down_counter(
-    name="mcp_cpu_usage_percent",
-    description="Current CPU usage percentage",
-    unit="%"
+    name="mcp_cpu_usage_percent", description="Current CPU usage percentage", unit="%"
 )
 
 memory_usage_gauge = meter.create_up_down_counter(
-    name="mcp_memory_usage_mb",
-    description="Current memory usage in MB",
-    unit="MB"
+    name="mcp_memory_usage_mb", description="Current memory usage in MB", unit="MB"
 )
+
 
 # Data models
 class HealthCheckResult(BaseModel):
     """Result of a health check operation."""
+
     service_name: str
     status: str = Field(description="Status: healthy, degraded, unhealthy")
     response_time_ms: float
@@ -121,8 +109,10 @@ class HealthCheckResult(BaseModel):
     details: dict[str, Any] = Field(default_factory=dict)
     error_message: str | None = None
 
+
 class PerformanceMetrics(BaseModel):
     """Performance metrics for a service."""
+
     service_name: str
     timestamp: datetime
     cpu_percent: float
@@ -133,8 +123,10 @@ class PerformanceMetrics(BaseModel):
     throughput: float | None = None
     error_rate: float = 0.0
 
+
 class TraceInfo(BaseModel):
     """Information about a trace."""
+
     trace_id: str
     service_name: str
     operation: str
@@ -143,16 +135,20 @@ class TraceInfo(BaseModel):
     status: str
     attributes: dict[str, Any] = Field(default_factory=dict)
 
+
 class AlertConfig(BaseModel):
     """Configuration for alerts."""
+
     metric_name: str
     threshold: float
     operator: str = Field(description="gt, lt, eq, ne")
     severity: str = Field(description="info, warning, error, critical")
     enabled: bool = True
 
+
 class AnomalyResult(BaseModel):
     """Result of anomaly detection."""
+
     metric_name: str
     detected_at: datetime
     severity: str
@@ -160,6 +156,7 @@ class AnomalyResult(BaseModel):
     current_value: float
     threshold_value: float
     historical_average: float
+
 
 @asynccontextmanager
 async def server_lifespan(mcp_instance: FastMCP):
@@ -189,18 +186,17 @@ async def server_lifespan(mcp_instance: FastMCP):
     logger.info("Shutting down Observability MCP Server")
     # Cleanup would go here if needed
 
+
 # Initialize FastMCP server
 mcp = FastMCP(
     name="Observability-MCP",
     lifespan=server_lifespan,
 )
 
+
 @mcp.tool()
 async def monitor_server_health(
-    ctx: Context,
-    service_url: str,
-    timeout_seconds: float = 5.0,
-    expected_status_codes: list[int] | None = None
+    ctx: Context, service_url: str, timeout_seconds: float = 5.0, expected_status_codes: list[int] | None = None
 ) -> dict[str, Any]:
     """
     Perform real-time health check on an MCP server or web service.
@@ -244,7 +240,7 @@ async def monitor_server_health(
                             "status_code": response.status,
                             "headers": dict(response.headers),
                             "content_length": len(await response.read()),
-                        }
+                        },
                     )
 
         except Exception as e:
@@ -254,7 +250,7 @@ async def monitor_server_health(
                 status="unhealthy",
                 response_time_ms=response_time,
                 timestamp=datetime.now(),
-                error_message=str(e)
+                error_message=str(e),
             )
 
     # Record metrics
@@ -275,8 +271,9 @@ async def monitor_server_health(
         "health_check": result.dict(),
         "metrics_recorded": True,
         "historical_checks": len(history),
-        "recommendations": _generate_health_recommendations(result)
+        "recommendations": _generate_health_recommendations(result),
     }
+
 
 @mcp.tool()
 async def collect_performance_metrics(ctx: Context, service_name: str = "system") -> dict[str, Any]:
@@ -298,7 +295,7 @@ async def collect_performance_metrics(ctx: Context, service_name: str = "system"
         # Collect system metrics
         cpu_percent = psutil.cpu_percent(interval=1)
         memory = psutil.virtual_memory()
-        disk = psutil.disk_usage('/')
+        disk = psutil.disk_usage("/")
         network = psutil.net_io_counters()
 
         metrics_data = PerformanceMetrics(
@@ -312,7 +309,7 @@ async def collect_performance_metrics(ctx: Context, service_name: str = "system"
                 "bytes_recv": network.bytes_recv,
                 "packets_sent": network.packets_sent,
                 "packets_recv": network.packets_recv,
-            }
+            },
         )
 
         # Record OpenTelemetry metrics
@@ -339,16 +336,13 @@ async def collect_performance_metrics(ctx: Context, service_name: str = "system"
             "metrics": metrics_data.dict(),
             "trends": trends,
             "alerts": await _check_performance_alerts(ctx, metrics_data),
-            "recommendations": _generate_performance_recommendations(metrics_data, trends)
+            "recommendations": _generate_performance_recommendations(metrics_data, trends),
         }
+
 
 @mcp.tool()
 async def trace_mcp_calls(
-    ctx: Context,
-    operation_name: str,
-    service_name: str,
-    duration_ms: float,
-    attributes: dict[str, Any] | None = None
+    ctx: Context, operation_name: str, service_name: str, duration_ms: float, attributes: dict[str, Any] | None = None
 ) -> dict[str, Any]:
     """
     Record a trace for MCP call monitoring and distributed tracing.
@@ -382,7 +376,7 @@ async def trace_mcp_calls(
             start_time=datetime.now(),
             duration_ms=duration_ms,
             status="completed",
-            attributes=attributes
+            attributes=attributes,
         )
 
     # Record metrics
@@ -402,8 +396,9 @@ async def trace_mcp_calls(
     return {
         "trace": trace_info.dict(),
         "patterns": patterns,
-        "performance_insights": _generate_trace_insights(trace_info, patterns)
+        "performance_insights": _generate_trace_insights(trace_info, patterns),
     }
+
 
 @mcp.tool()
 async def generate_performance_reports(ctx: Context, service_name: str | None = None, days: int = 7) -> dict[str, Any]:
@@ -433,10 +428,7 @@ async def generate_performance_reports(ctx: Context, service_name: str | None = 
             history = await ctx.storage.get(history_key, [])
 
             # Filter by date
-            recent_history = [
-                item for item in history
-                if datetime.fromisoformat(item["timestamp"]) > cutoff_date
-            ]
+            recent_history = [item for item in history if datetime.fromisoformat(item["timestamp"]) > cutoff_date]
         else:
             # Analyze all services
             all_history = {}
@@ -446,10 +438,7 @@ async def generate_performance_reports(ctx: Context, service_name: str | None = 
             for key in perf_keys:
                 service = key.replace("performance_history:", "")
                 history = await ctx.storage.get(key, [])
-                recent = [
-                    item for item in history
-                    if datetime.fromisoformat(item["timestamp"]) > cutoff_date
-                ]
+                recent = [item for item in history if datetime.fromisoformat(item["timestamp"]) > cutoff_date]
                 if recent:
                     all_history[service] = recent
 
@@ -465,16 +454,20 @@ async def generate_performance_reports(ctx: Context, service_name: str | None = 
             "summary": _generate_performance_summary(recent_history, service_name),
             "trends": _analyze_performance_trends_detailed(recent_history, service_name),
             "anomalies": await _detect_performance_anomalies(ctx, recent_history, service_name),
-            "recommendations": _generate_performance_recommendations_from_history(recent_history, service_name)
+            "recommendations": _generate_performance_recommendations_from_history(recent_history, service_name),
         }
 
         # Store report
         report_key = f"report:{service_name or 'all'}:{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         await ctx.storage.set(report_key, report)
 
-        span.set_attribute("report.metrics_count", len(recent_history) if isinstance(recent_history, list) else sum(len(h) for h in recent_history.values()))
+        span.set_attribute(
+            "report.metrics_count",
+            len(recent_history) if isinstance(recent_history, list) else sum(len(h) for h in recent_history.values()),
+        )
 
         return report
+
 
 @mcp.tool()
 async def alert_on_anomalies(ctx: Context, service_name: str | None = None) -> dict[str, Any]:
@@ -534,8 +527,9 @@ async def alert_on_anomalies(ctx: Context, service_name: str | None = None) -> d
             "active_alerts": active_alerts,
             "detected_anomalies": [anomaly.dict() for anomaly in anomalies],
             "alert_configs": [config.dict() for config in alert_configs],
-            "recommendations": _generate_alert_recommendations(active_alerts, anomalies)
+            "recommendations": _generate_alert_recommendations(active_alerts, anomalies),
         }
+
 
 @mcp.tool()
 async def monitor_system_resources(ctx: Context) -> dict[str, Any]:
@@ -549,30 +543,31 @@ async def monitor_system_resources(ctx: Context) -> dict[str, Any]:
         System resource status with analysis and recommendations
     """
     with tracer.start_as_span("monitor_system_resources") as span:
-
         # System-wide metrics
         cpu_times = psutil.cpu_times()
         memory = psutil.virtual_memory()
         swap = psutil.swap_memory()
-        disk = psutil.disk_usage('/')
+        disk = psutil.disk_usage("/")
         network = psutil.net_io_counters()
 
         # Process information
         processes = []
-        for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent']):
+        for proc in psutil.process_iter(["pid", "name", "cpu_percent", "memory_percent"]):
             try:
-                processes.append({
-                    'pid': proc.pid,
-                    'name': proc.name(),
-                    'cpu_percent': proc.cpu_percent(),
-                    'memory_percent': proc.memory_percent()
-                })
+                processes.append(
+                    {
+                        "pid": proc.pid,
+                        "name": proc.name(),
+                        "cpu_percent": proc.cpu_percent(),
+                        "memory_percent": proc.memory_percent(),
+                    }
+                )
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
 
         # Top 10 processes by CPU and memory
-        top_cpu = sorted(processes, key=lambda x: x['cpu_percent'], reverse=True)[:10]
-        top_memory = sorted(processes, key=lambda x: x['memory_percent'], reverse=True)[:10]
+        top_cpu = sorted(processes, key=lambda x: x["cpu_percent"], reverse=True)[:10]
+        top_memory = sorted(processes, key=lambda x: x["memory_percent"], reverse=True)[:10]
 
         system_status = {
             "timestamp": datetime.now().isoformat(),
@@ -584,7 +579,7 @@ async def monitor_system_resources(ctx: Context) -> dict[str, Any]:
                     "user": cpu_times.user,
                     "system": cpu_times.system,
                     "idle": cpu_times.idle,
-                }
+                },
             },
             "memory": {
                 "total_gb": memory.total / (1024**3),
@@ -613,7 +608,7 @@ async def monitor_system_resources(ctx: Context) -> dict[str, Any]:
                 "total": len(processes),
                 "top_cpu": top_cpu,
                 "top_memory": top_memory,
-            }
+            },
         }
 
         # Store system status
@@ -635,8 +630,9 @@ async def monitor_system_resources(ctx: Context) -> dict[str, Any]:
             "system_status": system_status,
             "health_analysis": health_analysis,
             "recommendations": _generate_system_recommendations(system_status, health_analysis),
-            "historical_trends": _analyze_system_trends(history) if len(history) > 1 else None
+            "historical_trends": _analyze_system_trends(history) if len(history) > 1 else None,
         }
+
 
 @mcp.tool()
 async def analyze_mcp_interactions(ctx: Context, days: int = 7) -> dict[str, Any]:
@@ -669,16 +665,17 @@ async def analyze_mcp_interactions(ctx: Context, days: int = 7) -> dict[str, Any
             traces = await ctx.storage.get(key, [])
 
             # Filter by date and collect
-            recent_traces = [
-                trace for trace in traces
-                if datetime.fromisoformat(trace["timestamp"]) > cutoff_date
-            ]
+            recent_traces = [trace for trace in traces if datetime.fromisoformat(trace["timestamp"]) > cutoff_date]
 
             all_traces.extend(recent_traces)
             service_stats[service_name] = {
                 "total_calls": len(recent_traces),
-                "avg_duration": sum(t["duration_ms"] for t in recent_traces) / len(recent_traces) if recent_traces else 0,
-                "error_rate": sum(1 for t in recent_traces if t.get("status") != "completed") / len(recent_traces) if recent_traces else 0,
+                "avg_duration": sum(t["duration_ms"] for t in recent_traces) / len(recent_traces)
+                if recent_traces
+                else 0,
+                "error_rate": sum(1 for t in recent_traces if t.get("status") != "completed") / len(recent_traces)
+                if recent_traces
+                else 0,
             }
 
         if not all_traces:
@@ -709,8 +706,9 @@ async def analyze_mcp_interactions(ctx: Context, days: int = 7) -> dict[str, Any
             "analysis_period_days": days,
             "patterns": patterns,
             "insights": insights,
-            "recommendations": _generate_interaction_recommendations(patterns, insights)
+            "recommendations": _generate_interaction_recommendations(patterns, insights),
         }
+
 
 @mcp.tool()
 async def export_metrics(ctx: Context, format: str = "prometheus", include_history: bool = False) -> dict[str, Any]:
@@ -736,7 +734,7 @@ async def export_metrics(ctx: Context, format: str = "prometheus", include_histo
             return {
                 "format": "prometheus",
                 "endpoint": f"http://localhost:{os.getenv('PROMETHEUS_PORT', '9090')}/metrics",
-                "message": "Metrics available at Prometheus endpoint"
+                "message": "Metrics available at Prometheus endpoint",
             }
 
         elif format == "opentelemetry":
@@ -744,7 +742,7 @@ async def export_metrics(ctx: Context, format: str = "prometheus", include_histo
             return {
                 "format": "opentelemetry",
                 "metrics": _collect_current_metrics(),
-                "traces": _collect_recent_traces(ctx) if include_history else None
+                "traces": _collect_recent_traces(ctx) if include_history else None,
             }
 
         elif format == "json":
@@ -752,7 +750,7 @@ async def export_metrics(ctx: Context, format: str = "prometheus", include_histo
             export_data = {
                 "timestamp": datetime.now().isoformat(),
                 "metrics": _collect_current_metrics(),
-                "version": "0.1.0"
+                "version": "0.1.0",
             }
 
             if include_history:
@@ -770,6 +768,7 @@ async def export_metrics(ctx: Context, format: str = "prometheus", include_histo
         else:
             return {"error": f"Unsupported format: {format}. Supported: prometheus, opentelemetry, json"}
 
+
 # Helper functions
 def _generate_health_recommendations(result: HealthCheckResult) -> list[str]:
     """Generate health check recommendations."""
@@ -785,6 +784,7 @@ def _generate_health_recommendations(result: HealthCheckResult) -> list[str]:
         recommendations.append(f"Address the error: {result.error_message}")
 
     return recommendations
+
 
 def _analyze_performance_trends(history: list[dict]) -> dict[str, Any]:
     """Analyze performance trends from historical data."""
@@ -802,10 +802,12 @@ def _analyze_performance_trends(history: list[dict]) -> dict[str, Any]:
         "avg_memory_mb": memory_avg,
     }
 
+
 def _check_performance_alerts(ctx: Context, metrics: PerformanceMetrics) -> list[dict]:
     """Check for performance alerts."""
     # Placeholder - would implement actual alert checking
     return []
+
 
 def _generate_performance_recommendations(metrics: PerformanceMetrics, trends: dict) -> list[str]:
     """Generate performance recommendations."""
@@ -822,6 +824,7 @@ def _generate_performance_recommendations(metrics: PerformanceMetrics, trends: d
 
     return recommendations
 
+
 def _analyze_trace_patterns(history: list[dict]) -> dict[str, Any]:
     """Analyze trace patterns."""
     if not history:
@@ -837,6 +840,7 @@ def _analyze_trace_patterns(history: list[dict]) -> dict[str, Any]:
         "total_operations": len(operations),
     }
 
+
 def _generate_trace_insights(trace: TraceInfo, patterns: dict) -> list[str]:
     """Generate insights from trace data."""
     insights = []
@@ -849,6 +853,7 @@ def _generate_trace_insights(trace: TraceInfo, patterns: dict) -> list[str]:
         insights.append(f"Most common operation: {top_op[0]} ({top_op[1]} calls)")
 
     return insights
+
 
 def _generate_performance_summary(history: Any, service_name: str | None = None) -> dict[str, Any]:
     """Generate performance summary."""
@@ -869,29 +874,38 @@ def _generate_performance_summary(history: Any, service_name: str | None = None)
             summary[svc] = _generate_performance_summary(data, svc)
         return summary
 
+
 def _analyze_performance_trends_detailed(history: Any, service_name: str | None = None) -> dict[str, Any]:
     """Detailed trend analysis."""
     return {"detailed_analysis": "Implemented in full version"}
+
 
 def _detect_performance_anomalies(ctx: Context, history: Any, service_name: str | None = None) -> list[dict]:
     """Detect performance anomalies."""
     return []
 
+
 def _generate_performance_recommendations_from_history(history: Any, service_name: str | None = None) -> list[str]:
     """Generate recommendations from historical data."""
     return ["Monitor trends regularly", "Set up alerting for critical metrics"]
 
-async def _detect_service_anomalies(ctx: Context, service: str, history: list, configs: list[AlertConfig]) -> list[AnomalyResult]:
+
+async def _detect_service_anomalies(
+    ctx: Context, service: str, history: list, configs: list[AlertConfig]
+) -> list[AnomalyResult]:
     """Detect anomalies for a specific service."""
     return []
+
 
 async def _check_active_alerts(ctx: Context, service: str, history: list, configs: list[AlertConfig]) -> list[dict]:
     """Check for active alerts."""
     return []
 
+
 def _generate_alert_recommendations(alerts: list, anomalies: list) -> list[str]:
     """Generate alert recommendations."""
     return ["Review alert configurations", "Set up notification channels"]
+
 
 def _analyze_system_health(status: dict) -> dict[str, Any]:
     """Analyze system health."""
@@ -915,8 +929,9 @@ def _analyze_system_health(status: dict) -> dict[str, Any]:
     return {
         "overall_score": max(0, health_score),
         "status": "healthy" if health_score >= 70 else "degraded" if health_score >= 40 else "critical",
-        "issues": []
+        "issues": [],
     }
+
 
 def _generate_system_recommendations(status: dict, health: dict) -> list[str]:
     """Generate system recommendations."""
@@ -933,9 +948,11 @@ def _generate_system_recommendations(status: dict, health: dict) -> list[str]:
 
     return recommendations
 
+
 def _analyze_system_trends(history: list) -> dict[str, Any]:
     """Analyze system trends."""
     return {"trend_analysis": "Implemented in full version"}
+
 
 def _find_peak_usage_hours(traces: list) -> list[int]:
     """Find peak usage hours."""
@@ -946,48 +963,59 @@ def _find_peak_usage_hours(traces: list) -> list[int]:
 
     return sorted(hours.keys(), key=lambda x: hours[x], reverse=True)[:3]
 
+
 def _find_slowest_operations(traces: list) -> list[dict]:
     """Find slowest operations."""
     sorted_traces = sorted(traces, key=lambda x: x.get("duration_ms", 0), reverse=True)
     return sorted_traces[:5]
+
 
 def _analyze_error_patterns(traces: list) -> dict[str, Any]:
     """Analyze error patterns."""
     errors = [t for t in traces if t.get("status") != "completed"]
     return {"total_errors": len(errors), "error_rate": len(errors) / len(traces) if traces else 0}
 
+
 def _identify_bottlenecks(patterns: dict) -> list[str]:
     """Identify performance bottlenecks."""
     return ["Analysis of bottlenecks would be implemented here"]
+
 
 def _find_optimization_opportunities(patterns: dict) -> list[str]:
     """Find optimization opportunities."""
     return ["Caching opportunities", "Async optimization", "Resource pooling"]
 
+
 def _generate_scaling_recommendations(patterns: dict) -> list[str]:
     """Generate scaling recommendations."""
     return ["Horizontal scaling for high load", "Load balancer configuration"]
+
 
 def _analyze_usage_trends(traces: list) -> dict[str, Any]:
     """Analyze usage trends."""
     return {"trend": "increasing", "growth_rate": "5% per week"}
 
+
 def _generate_interaction_recommendations(patterns: dict, insights: dict) -> list[str]:
     """Generate interaction recommendations."""
     return ["Optimize frequently called operations", "Implement caching for hot paths"]
+
 
 def _collect_current_metrics() -> dict[str, Any]:
     """Collect current metrics."""
     return {"current_metrics": "Would be collected from OpenTelemetry"}
 
+
 def _collect_recent_traces(ctx: Context) -> list[dict]:
     """Collect recent traces."""
     return []
+
 
 async def main():
     """Main entry point for the observability MCP server."""
     logger.info("Starting Observability MCP Server", version="0.1.0")
     mcp.run(transport="stdio")
+
 
 if __name__ == "__main__":
     main()

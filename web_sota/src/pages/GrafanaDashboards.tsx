@@ -1,3 +1,16 @@
+import {
+  BarChart3,
+  BookOpen,
+  ExternalLink,
+  HelpCircle,
+  Layers,
+  RefreshCw,
+  Search,
+  Sparkles,
+  Wrench,
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,30 +27,20 @@ import {
 } from "@/data/dashboard-catalog";
 import {
   type EnrichedDashboard,
-  type GrafanaSearchHit,
   enrichDashboards,
+  type GrafanaSearchHit,
   groupByCategory,
 } from "@/lib/dashboard-matcher";
 import { grafanaDashboardUrl } from "@/lib/grafana-url";
 import { callTool } from "@/lib/mcp-client";
-import {
-  BarChart3,
-  BookOpen,
-  ExternalLink,
-  HelpCircle,
-  Layers,
-  RefreshCw,
-  Search,
-  Sparkles,
-  Wrench,
-} from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 
 function DashboardCard({
   item,
   missing,
-}: { item: EnrichedDashboard; missing: boolean }) {
+}: {
+  item: EnrichedDashboard;
+  missing: boolean;
+}) {
   const { hit, preset } = item;
   const title = preset?.displayTitle ?? hit.title;
   const tagline = preset?.tagline ?? "Live dashboard from your Grafana server";
@@ -182,7 +185,7 @@ export function GrafanaDashboards() {
       };
       setEnriched(enrichDashboards(result.dashboards ?? []));
       setError(null);
-    } catch (e) {
+    } catch (_e) {
       setError(
         "Could not reach Grafana. Start unified monitoring (port 12000) and copy .env.unified-monitoring.example to .env.",
       );
@@ -194,7 +197,7 @@ export function GrafanaDashboards() {
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
