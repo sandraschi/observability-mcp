@@ -198,8 +198,8 @@ if bridge_urls:
     except ImportError:
         pass
 
-from observability_mcp.fleet_tool_metrics import register_mcp_tool_metrics  # noqa: E402
-from observability_mcp.sota_registration import register_sota_surface  # noqa: E402
+from observability_mcp.fleet_tool_metrics import register_mcp_tool_metrics
+from observability_mcp.sota_registration import register_sota_surface
 
 register_mcp_tool_metrics(mcp)
 register_sota_surface(mcp)
@@ -1882,9 +1882,9 @@ def _correlate_logs_metrics(logs: dict, metrics: dict) -> dict[str, Any]:
     }
 
 
-from observability_mcp.agentic_workflow import register_agentic_observability_tools  # noqa: E402
-from observability_mcp.asgi import build_asgi_app  # noqa: E402
-from observability_mcp.prefab_cards import register_prefab_cards  # noqa: E402
+from observability_mcp.agentic_workflow import register_agentic_observability_tools
+from observability_mcp.asgi import build_asgi_app
+from observability_mcp.prefab_cards import register_prefab_cards
 
 register_agentic_observability_tools(mcp)
 register_prefab_cards(mcp)
