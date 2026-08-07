@@ -1,17 +1,17 @@
 set windows-shell := ["powershell.exe", "-NoProfile", "-Command"]
 import 'scripts/just/fleet.just'
 
-# ── Dashboard ─────────────────────────────────────────────────────────────────
+# --- Dashboard ---
 
-# Display SOTA Industrial Dashboard (terminal help — fleet standard)
+# --- Display SOTA Industrial Dashboard  terminal help  fleet standard ---
 default:
     @powershell.exe -NoProfile -ExecutionPolicy Bypass -File  -Path . -Title observability-mcp -Version 0.3.0b1 -Subtitle "Web http://127.0.0.1:12008 | MCP http://127.0.0.1:12007/mcp"
 
-# Open click-to-run recipe dashboard in browser (port 11030 — not 10789)
+# --- Open click-to-run recipe dashboard in browser  port 11030  not 10789 ---
 just-ui:
     @powershell.exe -NoProfile -ExecutionPolicy Bypass -File  -Path . -Port 11030
 
-# ── Quality ───────────────────────────────────────────────────────────────────
+# --- Quality ---
 
 # Lint Python and web_sota (Biome)
 lint:
@@ -36,7 +36,7 @@ test:
     Set-Location '{{justfile_directory()}}'
     uv run --extra test pytest tests -q --cov=observability_mcp --cov-report=term-missing
 
-# ── Development ───────────────────────────────────────────────────────────────
+# --- Development ---
 
 # Install/sync dependencies
 install:
@@ -45,7 +45,7 @@ install:
     Set-Location '{{justfile_directory()}}\web_sota'
     npm install
 
-# Start backend + Vite (12007 / 12008) — opens browser when ready
+# --- Start backend  Vite  opens browser when ready ---
 start:
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File web_sota/start.ps1
 
@@ -68,7 +68,7 @@ stdio:
     Set-Location '{{justfile_directory()}}'
     uv run observability-mcp
 
-# ── Hardening ─────────────────────────────────────────────────────────────────
+# --- Hardening ---
 
 # Execute Bandit security audit
 check-sec:
@@ -96,7 +96,7 @@ docker-status:
     Set-Location '{{justfile_directory()}}\
     docker compose -f docker-compose.unified-monitoring.yml ps
 
-# ── Deployment ────────────────────────────────────────────────────────────────
+# --- Deployment ---
 
 # Build Python wheel and web_sota production bundle (SOTA mandatory)
 build:
@@ -104,3 +104,9 @@ build:
     uv build
     Set-Location '{{justfile_directory()}}\web_sota'
     npm run build
+
+# Bootstrap: install dev deps + pre-commit hook
+bootstrap:
+    uv sync --group dev
+    uv run pre-commit install
+    Write-Host "Pre-commit hooks installed." -ForegroundColor Green
