@@ -15,21 +15,14 @@ just-ui:
 
 # Lint Python and web_sota (Biome)
 lint:
-    Set-Location '{{justfile_directory()}}'
-    uv run ruff check .
-    Set-Location '{{justfile_directory()}}\web_sota'
-    npx @biomejs/biome ci .
+    Set-Location '{{justfile_directory()}}'; uv run ruff check .; Set-Location '{{justfile_directory()}}\web_sota'; npx @biomejs/biome ci .
 
 # Linting and formatting (SOTA mandatory)
 check: lint
 
 # Execute Ruff fix and Biome write
 fix:
-    Set-Location '{{justfile_directory()}}'
-    uv run ruff check . --fix --unsafe-fixes
-    uv run ruff format .
-    Set-Location '{{justfile_directory()}}\web_sota'
-    npx @biomejs/biome check --write .
+    Set-Location '{{justfile_directory()}}'; uv run ruff check . --fix --unsafe-fixes; uv run ruff format .; Set-Location '{{justfile_directory()}}\web_sota'; npx @biomejs/biome check --write .
 
 # Automated verification (SOTA mandatory)
 test:
@@ -40,10 +33,7 @@ test:
 
 # Install/sync dependencies
 install:
-    Set-Location '{{justfile_directory()}}'
-    uv sync --extra test --extra dev
-    Set-Location '{{justfile_directory()}}\web_sota'
-    npm install
+    Set-Location '{{justfile_directory()}}'; uv sync --extra test --extra dev; Set-Location '{{justfile_directory()}}\web_sota'; npm install
 
 # --- Start backend  Vite  opens browser when ready ---
 start:
@@ -57,8 +47,7 @@ serve:
 
 # Vite frontend only (12008; proxies API to 12007)
 web:
-    Set-Location '{{justfile_directory()}}\web_sota'
-    npm run dev -- --port 12008 --host
+    Set-Location '{{justfile_directory()}}\web_sota'; npm run dev -- --port 12008 --host
 
 # Alias: full stack via start.ps1
 dev: start
@@ -91,19 +80,13 @@ docker-reset:
 
 # Check Docker and unified monitoring stack
 docker-status:
-    @Write-Host " [System] Probing Docker infrastructure..." -ForegroundColor Cyan
-    docker version
-    Set-Location '{{justfile_directory()}}\
-    docker compose -f docker-compose.unified-monitoring.yml ps
+    @Write-Host " [System] Probing Docker infrastructure..." -ForegroundColor Cyan; docker version; Set-Location '{{justfile_directory()}}\; docker compose -f docker-compose.unified-monitoring.yml ps
 
 # --- Deployment ---
 
 # Build Python wheel and web_sota production bundle (SOTA mandatory)
 build:
-    Set-Location '{{justfile_directory()}}'
-    uv build
-    Set-Location '{{justfile_directory()}}\web_sota'
-    npm run build
+    Set-Location '{{justfile_directory()}}'; uv build; Set-Location '{{justfile_directory()}}\web_sota'; npm run build
 
 # Bootstrap: install dev deps + pre-commit hook
 bootstrap:
