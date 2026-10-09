@@ -157,7 +157,13 @@ class JsonFileStorage:
 rate_limiter = RateLimiter()
 input_validator = InputValidator()
 _server_state: dict[str, Any] = {}
+# Relative paths resolve against the repo root (where storage.json lives), never
+# the CWD: Claude Desktop spawns stdio servers with cwd=C:\Windows\System32 (BUG-063).
 storage_path = os.getenv("MCP_STORAGE_PATH", "storage.json")
+if not os.path.isabs(storage_path):
+    storage_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), storage_path
+    )
 storage = JsonFileStorage(storage_path)
 
 

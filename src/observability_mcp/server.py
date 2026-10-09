@@ -39,8 +39,11 @@ from .otel_compat import use_span
 from .prompts import register_prompts
 from .transport import run_server
 
-# Configure structured logging for industrial use
-log_file = os.getenv("LOG_FILE", "observability-mcp.log")
+# Configure structured logging for industrial use. Default log is absolute, never
+# CWD-relative: Claude Desktop spawns stdio servers with cwd=C:\Windows\System32 (BUG-063).
+_log_dir = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "observability-mcp", "logs")
+os.makedirs(_log_dir, exist_ok=True)
+log_file = os.getenv("LOG_FILE", os.path.join(_log_dir, "observability-mcp.log"))
 logging.basicConfig(
     level=logging.INFO,
     format="%(message)s",
