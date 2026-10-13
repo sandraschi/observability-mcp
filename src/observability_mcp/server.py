@@ -117,18 +117,18 @@ async def server_lifespan(mcp_instance: FastMCP):
     _server_state["server_start_time"] = time.time()
     _server_state["degraded_mode"] = False
 
-    # Prometheus metrics server — optional, don't crash if port is taken
+    # Prometheus metrics server - optional, don't crash if port is taken
     prometheus_port = int(os.getenv("PROMETHEUS_PORT", "12009"))
     try:
         start_http_server(prometheus_port)
         logger.info("Prometheus metrics server started", port=prometheus_port)
     except OSError as e:
         logger.warning(
-            "Could not start Prometheus metrics server — port may already be in use", port=prometheus_port, error=str(e)
+            "Could not start Prometheus metrics server - port may already be in use", port=prometheus_port, error=str(e)
         )
         _server_state["degraded_mode"] = True
 
-    # Persistent storage — fall back gracefully if filesystem is unavailable
+    # Persistent storage - fall back gracefully if filesystem is unavailable
     try:
         retention_days = int(os.getenv("METRICS_RETENTION_DAYS", "30"))
         await storage.set("metrics_retention_days", retention_days)
@@ -149,7 +149,7 @@ async def server_lifespan(mcp_instance: FastMCP):
             degraded_mode=_server_state["degraded_mode"],
         )
     except Exception as e:
-        logger.error("Storage initialisation failed — running without persistence", error=str(e))
+        logger.error("Storage initialisation failed - running without persistence", error=str(e))
         _server_state["degraded_mode"] = True
 
     yield
@@ -164,7 +164,7 @@ mcp = FastMCP(
     instructions=(
         "Observability-MCP is the fleet control plane for Grafana (12000), Prometheus (12001), and Loki (12002). "
         "Use check_stack_status first, then manage_grafana_dashboards, query_loki_logs, and monitor_server_health. "
-        "Do not start a second PLG stack on 3000/9090/3100 — use mcp-central-docs unified monitoring."
+        "Do not start a second PLG stack on 3000/9090/3100 - use mcp-central-docs unified monitoring."
     ),
     lifespan=server_lifespan,
     strict_input_validation=True,
@@ -183,7 +183,7 @@ def observability_capabilities() -> str:
     )
 
 
-# MCP Bridge — Proxy external MCP servers via MCP_BRIDGE_URLS
+# MCP Bridge - Proxy external MCP servers via MCP_BRIDGE_URLS
 _bridge_proxies: list[str] = []
 bridge_urls = os.getenv("MCP_BRIDGE_URLS", "")
 if bridge_urls:
@@ -381,7 +381,7 @@ async def show_status_dashboard(ctx: Context) -> Any:
             ),
         ]
         if cpu is not None
-        else [H3("System Performance"), Text("⚠ Metrics unavailable — psutil collection failed")]
+        else [H3("System Performance"), Text("⚠ Metrics unavailable - psutil collection failed")]
     )
 
     card = Card(

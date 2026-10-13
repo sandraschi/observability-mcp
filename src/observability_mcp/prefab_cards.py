@@ -72,7 +72,7 @@ def register_prefab_cards(mcp) -> None:
         manifest = get_sota_feature_manifest()
         feats = manifest.get("features", {})
         summary = (
-            f"{manifest.get('package')} FastMCP {manifest.get('fastmcp')} — "
+            f"{manifest.get('package')} FastMCP {manifest.get('fastmcp')} - "
             f"~18 tools, portmanteau={feats.get('portmanteau')}"
         )
         await ctx.info(summary)
