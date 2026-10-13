@@ -1,1 +1,26 @@
-{}
+{
+  "metrics_retention_days": 30,
+  "alert_configs": [
+    {
+      "metric_name": "cpu_percent",
+      "threshold": 90.0,
+      "operator": "gt",
+      "severity": "warning",
+      "enabled": true
+    },
+    {
+      "metric_name": "memory_mb",
+      "threshold": 1000.0,
+      "operator": "gt",
+      "severity": "error",
+      "enabled": true
+    },
+    {
+      "metric_name": "error_rate",
+      "threshold": 0.05,
+      "operator": "gt",
+      "severity": "error",
+      "enabled": true
+    }
+  ]
+}

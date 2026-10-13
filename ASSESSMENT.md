@@ -1,4 +1,4 @@
-# observability-mcp — Project Assessment
+# observability-mcp -- Project Assessment
 
 **Category:** MCP Server (observability control plane)  
 **Assessment date:** 2026-06-03  
@@ -8,8 +8,8 @@
 
 | Metric | Value |
 |--------|-------|
-| **Status** | Active — 0.2.0 unified-port + Charts web UI |
-| **FastMCP** | 3.3+ declared; partial SOTA — see `docs/FASTMCP_STATUS.md` |
+| **Status** | Active -- 0.2.0 unified-port + Charts web UI |
+| **FastMCP** | 3.3+ declared; partial SOTA -- see `docs/FASTMCP_STATUS.md` |
 | **Unified PLG** | Consumer only (12000–12006), not host |
 | **MCPB packaging** | manifest.json present; not fully validated |
 | **CI/CD** | Not configured |
